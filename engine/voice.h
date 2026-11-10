@@ -89,6 +89,8 @@ typedef struct {
     vocal_tract    vt;
     vt_params      p;        /* staged parameters; go() queues a copy */
     const uint8_t *pot;      /* the instrument's VB_NUM_POTS knobs */
+    uint8_t        velocity; /* 1..127 scales ga, aa and fa; 127 = as set */
+    int8_t         bend;     /* pitch offset in gp units (1/48 octave) */
     uint32_t       dropped;  /* frames lost to a full queue (should stay 0) */
 } vb_voice;
 
@@ -97,7 +99,8 @@ typedef struct {
  * and each key is a semitone, so key = MIDI note - 32. Usable range -12..51.
  */
 
-/* Start the voice: resets the tract and queues a short silent frame. */
+/* Start the voice: resets the tract and queues a short silent frame that
+ * parks the formants on a neutral vowel. */
 void vb_voice_start(vb_voice *v, const uint8_t *pot);
 
 /* True when every queued frame has been played. */

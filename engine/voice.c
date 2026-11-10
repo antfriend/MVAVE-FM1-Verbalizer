@@ -15,6 +15,13 @@
  *    up a phoneme with the release time knob. And the volume back-off for
  *    higher keys applies to every volume; the original skipped it for volumes
  *    at or below the back-off, so turning a volume down could make it louder.
+ *  - Every phoneme starts from frication and nasal off, and silence turns
+ *    frication off. In the original a voice that had played the noise
+ *    phoneme hissed until the mode changed, and the "ah" and "blah" phonemes
+ *    left the nasal branch on for whatever came next.
+ *  - A voice starts with its formants on a neutral vowel instead of 0 Hz, so
+ *    its first note does not sweep up through an overload.
+ *  - Velocity and pitch bend, which the original had no notion of.
  */
 #include "voice.h"
 
@@ -25,7 +32,14 @@
 
 static void go(vb_voice *v, uint32_t time)
 {
-    if (!vt_go(&v->vt, &v->p, time))
+    vt_params p = v->p;
+
+    if (v->velocity < 127) {
+        p.ga = BYTE(p.ga * v->velocity / 127);
+        p.aa = BYTE(p.aa * v->velocity / 127);
+        p.fa = BYTE(p.fa * v->velocity / 127);
+    }
+    if (!vt_go(&v->vt, &p, time))
         v->dropped++;
 }
 
@@ -39,9 +53,9 @@ static void setformants(vb_voice *v, int s1, int s2, int s3, int s4)
 
 static void set_gp_to_pitch(vb_voice *v, int key)
 {
-    int gp = (key + 12) * 4;
+    int gp = (key + 12) * 4 + v->bend;
 
-    /* cannot happen on the original's keys 1..37 */
+    /* cannot happen on the original's keys 1..37 without pitch bend */
     if (gp < 0)
         gp = 0;
     if (gp > 255)
@@ -53,7 +67,7 @@ static void set_gp_to_pitch(vb_voice *v, int key)
  * Always set gp before calling this. */
 static void ga_wrapper(vb_voice *v, int value)
 {
-    int pitch = (v->p.gp / 4 - 12) / 2;
+    int pitch = ((v->p.gp - v->bend) / 4 - 12) / 2;
 
     if (pitch < 0)
         pitch = 0;
@@ -66,6 +80,7 @@ static void bEEt_to_silence(vb_voice *v)
 {
     ga_wrapper(v, 0);
     v->p.aa = 0;
+    v->p.fa = 0;
 }
 
 static void vowel(vb_voice *v, int s1, int s2, int s3, int s4, uint8_t aa)
@@ -135,6 +150,10 @@ static void Select_Allophone(vb_voice *v, uint8_t pot_value, int key)
 {
     set_gp_to_pitch(v, key);
 
+    /* each phoneme says what it needs; nothing carries over from the last */
+    v->p.fa = 0;
+    v->p.na = 0;
+
     switch (pot_value / 7) {
     case 0:
     case 1:
@@ -169,8 +188,11 @@ void vb_voice_start(vb_voice *v, const uint8_t *pot)
     vt_init(&v->vt);
     memset(&v->p, 0, sizeof v->p);
     v->pot = pot;
+    v->velocity = 127;
+    v->bend = 0;
     v->dropped = 0;
     set_gp_to_pitch(v, 1);
+    setformants(v, 500, 1500, 2500, 3500);
     bEEt_to_silence(v);
     go(v, 1);
 }

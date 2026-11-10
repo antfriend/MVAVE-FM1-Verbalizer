@@ -360,6 +360,33 @@ void vt_advance_noise(vocal_tract *vt, unsigned samples)
         vt->lfsr = lfsr_next(lfsr_next(lfsr_next(vt->lfsr)));
 }
 
+static bool is_residue(uint32_t v)
+{
+    return v + 1024u < 2048u; /* -1024 <= v < 1024 */
+}
+
+bool vt_settle(vocal_tract *vt)
+{
+    int i;
+
+    if (vt->count)
+        return false;
+    if (vt->cur[P_AA] | vt->cur[P_GA] | vt->cur[P_FA] |
+        vt->next[P_AA] | vt->next[P_GA] | vt->next[P_FA])
+        return false;
+    if (!is_residue(vt->x) || !is_residue(vt->nx))
+        return false;
+    for (i = 0; i < 4; i++) {
+        if (!is_residue(vt->fx[i]) || !is_residue(vt->fy[i]))
+            return false;
+    }
+    vt->x = 0;
+    vt->nx = 0;
+    memset(vt->fx, 0, sizeof vt->fx);
+    memset(vt->fy, 0, sizeof vt->fy);
+    return true;
+}
+
 int32_t vt_tick(vocal_tract *vt)
 {
     const uint32_t *p = vt->cur;

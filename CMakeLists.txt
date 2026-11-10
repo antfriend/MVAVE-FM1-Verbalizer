@@ -35,3 +35,21 @@ enable_testing()
 add_executable(test_engine tests/test_engine.c)
 target_link_libraries(test_engine PRIVATE hostlib)
 add_test(NAME engine COMMAND test_engine ${CMAKE_CURRENT_SOURCE_DIR}/tests/golden)
+
+# The desktop tools: every score in the repository has to play, and a broken
+# one has to be refused.
+add_test(NAME score_demo COMMAND verbalize
+  ${CMAKE_CURRENT_SOURCE_DIR}/host/scores/demo.txt ${CMAKE_CURRENT_BINARY_DIR}/demo.wav)
+add_test(NAME score_crackle COMMAND verbalize
+  ${CMAKE_CURRENT_SOURCE_DIR}/host/scores/crackle.txt ${CMAKE_CURRENT_BINARY_DIR}/crackle.wav)
+add_test(NAME score_all_commands COMMAND verbalize
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/scores/all_commands.txt ${CMAKE_CURRENT_BINARY_DIR}/all_commands.wav)
+add_test(NAME score_bad_command COMMAND verbalize
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/scores/bad_command.txt ${CMAKE_CURRENT_BINARY_DIR}/bad.wav)
+add_test(NAME score_bad_note COMMAND verbalize
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/scores/bad_note.txt ${CMAKE_CURRENT_BINARY_DIR}/bad.wav)
+set_tests_properties(score_bad_command score_bad_note PROPERTIES WILL_FAIL TRUE)
+add_test(NAME tract_script COMMAND vt_script
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/golden/vowel.vts ${CMAKE_CURRENT_BINARY_DIR}/vowel.wav)
+set_tests_properties(tract_script PROPERTIES
+  PASS_REGULAR_EXPRESSION "6000 d7443ca41dfe5966")

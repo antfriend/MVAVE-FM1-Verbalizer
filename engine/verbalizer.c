@@ -5,7 +5,8 @@
  * Differences from the original, all on purpose:
  *
  *  - Key states change on key events instead of on a matrix scan. The states
- *    and what each mode does with them every 2 ms are the same.
+ *    and what each mode does with them every 2 ms are the same, except that
+ *    a key released before it was noticed still plays.
  *  - Formants mode feeds voice 0 when its queue has run out, taking held keys
  *    in turn. The original re-queued every held key on every pass and relied
  *    on go() blocking to pace itself.
@@ -14,13 +15,22 @@
  *  - The stereo spatializer is not ported yet; the voices are mixed to mono.
  *  - Overdriven voices clip instead of wrapping into noise, unless
  *    vb_set_crackle() asks for the original behaviour.
+ *  - Silent voices are brought to rest so the output returns to exactly zero.
+ *  - Velocity, pitch bend, the sustain pedal and MIDI controllers are new.
  */
 #include "verbalizer.h"
 
 #include <string.h>
 
-/* key states, as in Verbalizer.spin */
-enum { SILENCE = 0, RELEASE = 1, SUSTAIN = 2, TRIGGER = 3 };
+/* Key states. The first four are the original's. */
+enum {
+    SILENCE = 0,
+    RELEASE = 1,
+    SUSTAIN = 2,
+    TRIGGER = 3,
+    TAP = 4,       /* pressed and released before a scan saw it */
+    TAP_PLAYED = 5 /* a tap that got its voice this scan; released next scan */
+};
 
 #define NO_KEY (-1000)
 
@@ -28,9 +38,26 @@ enum { SILENCE = 0, RELEASE = 1, SUSTAIN = 2, TRIGGER = 3 };
 
 typedef void (*play_fn)(vb_voice *v, int key);
 
-/* A key wants a voice. Returns true if it got one. */
-static bool go_if_available(verbalizer *vb, int key, play_fn play)
+static bool wants_voice(uint8_t state)
 {
+    return state == TRIGGER || state == TAP;
+}
+
+static void started(verbalizer *vb, int k)
+{
+    vb->key_state[k] = (uint8_t)(vb->key_state[k] == TAP ? TAP_PLAYED : SUSTAIN);
+}
+
+static void play(verbalizer *vb, int voice, int k, play_fn fn)
+{
+    vb->voice[voice].velocity = vb->key_velocity[k];
+    fn(&vb->voice[voice], KEY_OF(k));
+}
+
+/* A key wants a voice. Returns true if it got one. */
+static bool go_if_available(verbalizer *vb, int k, play_fn fn)
+{
+    int key = KEY_OF(k);
     int i;
 
     /* if a voice last played this key, only that voice may take it */
@@ -38,14 +65,14 @@ static bool go_if_available(verbalizer *vb, int key, play_fn play)
         if (vb->voice_key[i] == key) {
             if (!vb_voice_done(&vb->voice[i]))
                 return false; /* this key is in use */
-            play(&vb->voice[i], key);
+            play(vb, i, k, fn);
             return true;
         }
     }
     for (i = 0; i < VB_VOICES; i++) {
         if (vb_voice_done(&vb->voice[i])) {
             vb->voice_key[i] = key;
-            play(&vb->voice[i], key);
+            play(vb, i, k, fn);
             return true;
         }
     }
@@ -73,8 +100,8 @@ static void scan_tsr(verbalizer *vb)
         }
     }
     for (k = 0; k < VB_NUM_KEYS; k++) {
-        if (vb->key_state[k] == TRIGGER && go_if_available(vb, KEY_OF(k), vb_voice_trigger))
-            vb->key_state[k] = SUSTAIN;
+        if (wants_voice(vb->key_state[k]) && go_if_available(vb, k, vb_voice_trigger))
+            started(vb, k);
     }
 }
 
@@ -83,8 +110,8 @@ static void scan_words(verbalizer *vb)
     int k;
 
     for (k = 0; k < VB_NUM_KEYS; k++) {
-        if (vb->key_state[k] == TRIGGER && go_if_available(vb, KEY_OF(k), vb_voice_word))
-            vb->key_state[k] = SUSTAIN;
+        if (wants_voice(vb->key_state[k]) && go_if_available(vb, k, vb_voice_word))
+            started(vb, k);
     }
 }
 
@@ -108,9 +135,9 @@ static void scan_formants(verbalizer *vb)
         return;
     for (n = 1; n <= VB_NUM_KEYS; n++) {
         k = (vb->formants_cursor + n) % VB_NUM_KEYS;
-        if (vb->key_state[k] == TRIGGER || vb->key_state[k] == SUSTAIN) {
-            vb_voice_formants(v, KEY_OF(k));
-            vb->key_state[k] = SUSTAIN;
+        if (wants_voice(vb->key_state[k]) || vb->key_state[k] == SUSTAIN) {
+            play(vb, 0, k, vb_voice_formants);
+            started(vb, k);
             vb->formants_cursor = k;
             break;
         }
@@ -119,18 +146,31 @@ static void scan_formants(verbalizer *vb)
 
 static void scan(verbalizer *vb)
 {
-    int k;
+    int k, i;
 
     switch (vb->mode) {
     case VB_MODE_WORDS:    scan_words(vb); break;
     case VB_MODE_TSR:      scan_tsr(vb); break;
     case VB_MODE_FORMANTS: scan_formants(vb); break;
     }
-    /* a release is seen for one scan only */
     for (k = 0; k < VB_NUM_KEYS; k++) {
-        if (vb->key_state[k] == RELEASE)
+        switch (vb->key_state[k]) {
+        case RELEASE:    /* a release is seen for one scan only */
             vb->key_state[k] = SILENCE;
+            break;
+        case TAP:        /* no voice free yet: wait a little, then give up */
+            if (vb->key_tap_wait[k] == 0 || --vb->key_tap_wait[k] == 0)
+                vb->key_state[k] = SILENCE;
+            break;
+        case TAP_PLAYED: /* now let the next scan release it */
+            vb->key_state[k] = RELEASE;
+            break;
+        default:
+            break;
+        }
     }
+    for (i = 0; i < VB_VOICES; i++)
+        vt_settle(&vb->voice[i].vt);
 }
 
 void vb_init(verbalizer *vb)
@@ -139,6 +179,7 @@ void vb_init(verbalizer *vb)
 
     memset(vb, 0, sizeof *vb);
     vb->mode = VB_MODE_TSR;
+    memset(vb->key_velocity, 127, sizeof vb->key_velocity);
     for (i = 0; i < VB_VOICES; i++) {
         vb_voice_start(&vb->voice[i], vb->pot);
         vt_advance_noise(&vb->voice[i].vt, (unsigned)i * 1000u);
@@ -157,39 +198,75 @@ void vb_set_crackle(verbalizer *vb, bool on)
         vt_set_saturate(&vb->voice[i].vt, !on);
 }
 
-void vb_set_mode(verbalizer *vb, vb_mode mode)
+static void silence_all(verbalizer *vb)
 {
     int i;
 
-    if (mode == vb->mode)
-        return;
-    vb->mode = mode;
     vb->formants_fade_pending = 0;
     memset(vb->key_state, SILENCE, sizeof vb->key_state);
+    memset(vb->key_pedalled, 0, sizeof vb->key_pedalled);
     for (i = 0; i < VB_VOICES; i++)
         vb_voice_null(&vb->voice[i]);
 }
 
-bool vb_key_down(verbalizer *vb, int key)
+void vb_set_mode(verbalizer *vb, vb_mode mode)
 {
-    uint8_t *state;
+    if (mode == vb->mode)
+        return;
+    vb->mode = mode;
+    silence_all(vb);
+}
+
+bool vb_key_down_velocity(verbalizer *vb, int key, int velocity)
+{
+    int k = key - VB_KEY_MIN;
 
     if (key < VB_KEY_MIN || key > VB_KEY_MAX)
         return false;
-    state = &vb->key_state[key - VB_KEY_MIN];
-    if (*state != SUSTAIN)
-        *state = TRIGGER;
+    if (velocity < 1)
+        velocity = 1;
+    if (velocity > 127)
+        velocity = 127;
+    vb->key_pedalled[k] = 0;
+    if (vb->key_state[k] != SUSTAIN) {
+        vb->key_state[k] = TRIGGER;
+        vb->key_velocity[k] = (uint8_t)velocity;
+    }
     return true;
+}
+
+bool vb_key_down(verbalizer *vb, int key)
+{
+    return vb_key_down_velocity(vb, key, 127);
+}
+
+static void release_key(verbalizer *vb, int k)
+{
+    uint8_t *state = &vb->key_state[k];
+
+    vb->key_pedalled[k] = 0;
+    switch (*state) {
+    case SUSTAIN: *state = RELEASE; break;
+    case TRIGGER:
+        *state = TAP;
+        vb->key_tap_wait[k] = VB_TAP_WAIT_SCANS;
+        break;
+    default:      break; /* already on its way out */
+    }
 }
 
 bool vb_key_up(verbalizer *vb, int key)
 {
-    uint8_t *state;
+    int k = key - VB_KEY_MIN;
 
     if (key < VB_KEY_MIN || key > VB_KEY_MAX)
         return false;
-    state = &vb->key_state[key - VB_KEY_MIN];
-    *state = (uint8_t)(*state == SUSTAIN ? RELEASE : SILENCE);
+    if (vb->pedal) {
+        if (vb->key_state[k] == SUSTAIN || vb->key_state[k] == TRIGGER)
+            vb->key_pedalled[k] = 1;
+    } else {
+        release_key(vb, k);
+    }
     return true;
 }
 
@@ -198,17 +275,94 @@ bool vb_note_on(verbalizer *vb, int note)
     return vb_key_down(vb, note - VB_MIDI_OFFSET);
 }
 
+bool vb_note_on_velocity(verbalizer *vb, int note, int velocity)
+{
+    return vb_key_down_velocity(vb, note - VB_MIDI_OFFSET, velocity);
+}
+
 bool vb_note_off(verbalizer *vb, int note)
 {
     return vb_key_up(vb, note - VB_MIDI_OFFSET);
 }
 
+void vb_set_pedal(verbalizer *vb, bool down)
+{
+    int k;
+
+    vb->pedal = down;
+    if (down)
+        return;
+    for (k = 0; k < VB_NUM_KEYS; k++) {
+        if (vb->key_pedalled[k])
+            release_key(vb, k);
+    }
+}
+
+void vb_set_pitch_bend(verbalizer *vb, int bend)
+{
+    int i;
+
+    if (bend < -8192)
+        bend = -8192;
+    if (bend > 8191)
+        bend = 8191;
+    /* 4 gp units to the semitone */
+    bend = bend * (VB_BEND_SEMITONES * 4) / 8192;
+    for (i = 0; i < VB_VOICES; i++)
+        vb->voice[i].bend = (int8_t)bend;
+}
+
+bool vb_midi(verbalizer *vb, uint8_t status, uint8_t data1, uint8_t data2)
+{
+    data1 &= 0x7F;
+    data2 &= 0x7F;
+
+    switch (status & 0xF0) {
+    case 0x80:
+        return vb_note_off(vb, data1);
+    case 0x90:
+        if (data2 == 0)
+            return vb_note_off(vb, data1);
+        return vb_note_on_velocity(vb, data1, data2);
+    case 0xE0:
+        vb_set_pitch_bend(vb, ((data2 << 7) | data1) - 8192);
+        return true;
+    case 0xB0:
+        if (data1 >= VB_CC_KNOB_FIRST && data1 < VB_CC_KNOB_FIRST + VB_NUM_POTS) {
+            /* spread 0..127 over 0..255 */
+            vb->pot[data1 - VB_CC_KNOB_FIRST] = (uint8_t)((data2 << 1) | (data2 >> 6));
+            return true;
+        }
+        switch (data1) {
+        case VB_CC_PEDAL:
+            vb_set_pedal(vb, data2 >= 64);
+            return true;
+        case VB_CC_MODE:
+            vb_set_mode(vb, data2 < 43 ? VB_MODE_WORDS : data2 < 86 ? VB_MODE_TSR : VB_MODE_FORMANTS);
+            return true;
+        case VB_CC_CRACKLE:
+            vb_set_crackle(vb, data2 >= 64);
+            return true;
+        case VB_CC_ALL_SOUND_OFF:
+            silence_all(vb);
+            return true;
+        case VB_CC_ALL_NOTES_OFF:
+            vb_all_keys_up(vb);
+            return true;
+        default:
+            return false;
+        }
+    default:
+        return false;
+    }
+}
+
 void vb_all_keys_up(verbalizer *vb)
 {
-    int key;
+    int k;
 
-    for (key = VB_KEY_MIN; key <= VB_KEY_MAX; key++)
-        vb_key_up(vb, key);
+    for (k = 0; k < VB_NUM_KEYS; k++)
+        release_key(vb, k);
 }
 
 bool vb_idle(const verbalizer *vb)
@@ -228,6 +382,26 @@ bool vb_idle(const verbalizer *vb)
     return true;
 }
 
+/*
+ * Mix limiter. Sums up to half of full scale pass through untouched. Beyond
+ * that the excess e is replaced by h * e / (e + h), h being the headroom left,
+ * which meets the straight part with the same slope and approaches full scale
+ * without reaching it. Four full-scale voices come out at 94%.
+ */
+static int32_t soft_clip(int64_t sum)
+{
+    const int64_t knee = (int64_t)1 << 30;
+    const uint64_t headroom = (uint64_t)INT32_MAX - (uint64_t)knee;
+    uint64_t mag, excess;
+
+    if (sum >= -knee && sum <= knee)
+        return (int32_t)sum;
+    mag = (uint64_t)(sum < 0 ? -sum : sum);
+    excess = mag - (uint64_t)knee;
+    mag = (uint64_t)knee + headroom * excess / (excess + headroom);
+    return sum < 0 ? -(int32_t)mag : (int32_t)mag;
+}
+
 void vb_render(verbalizer *vb, int32_t *out, size_t count)
 {
     while (count) {
@@ -244,12 +418,7 @@ void vb_render(verbalizer *vb, int32_t *out, size_t count)
 
             for (v = 0; v < VB_VOICES; v++)
                 sum += vt_tick(&vb->voice[v].vt);
-            sum /= 2;
-            if (sum > INT32_MAX)
-                sum = INT32_MAX;
-            if (sum < INT32_MIN)
-                sum = INT32_MIN;
-            out[i] = (int32_t)sum;
+            out[i] = soft_clip(sum);
         }
         out += n;
         count -= n;

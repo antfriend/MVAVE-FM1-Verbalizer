@@ -128,6 +128,16 @@ bool vt_full(const vocal_tract *vt);
  */
 void vt_advance_noise(vocal_tract *vt, unsigned samples);
 
+/*
+ * Let a silent tract come to rest. The resonators' integer rounding leaves
+ * them stuck a few counts below zero after a sound has died away, so the
+ * output never quite returns to 0. If the queue is empty, all three sound
+ * sources are off and the resonators hold nothing but that residue, this
+ * clears them and returns true. It never changes anything audible. The tract
+ * does not call it itself; the original has no such step.
+ */
+bool vt_settle(vocal_tract *vt);
+
 /* Produce one 20 kHz sample. */
 int32_t vt_tick(vocal_tract *vt);
 

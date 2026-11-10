@@ -1,0 +1,2 @@
+mode tsr
+warble 3

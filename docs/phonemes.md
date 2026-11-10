@@ -35,5 +35,7 @@ The port corrects this: the table is converted with the same formula as phonemes
 ## Other things a phoneme sets
 
 - Phonemes 3–19 set the glottal amplitude to 30 (before the key back-off); the phase's volume knob then replaces it.
-- Phonemes 9–19 turn frication off. Phonemes 3–8 leave it as it was, so after the noise phoneme they keep hissing until one of 9–19 is used.
-- Nothing but the word and "ah" phonemes touch the nasal settings, and only the closing fade (used by Words and Formants modes and on a mode change) turns them off.
+- Every phoneme starts with frication and the nasal branch off. Only the noise phoneme turns frication on, and only the word and "ah" phonemes turn the nasal branch on.
+- Silence, including the fade at the end of every release, turns frication off as well as the voice and breath.
+
+The original did not reset these. A voice that had played the noise phoneme went on hissing after its key was released, through every later note, until the mode switch was moved; and the nasal setting of "ah" or the word stayed with the voice in the same way.

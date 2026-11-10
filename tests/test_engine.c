@@ -297,6 +297,7 @@ static void test_voice(void)
     vb_voice_start(&v, pot);
     CHECK(v.p.gp == 52); /* key 1 */
     CHECK(v.p.ga == 0);
+    CHECK(v.p.f1 == 25 && v.p.f2 == 76 && v.p.f3 == 128 && v.p.f4 == 179);
     CHECK(vt_queued(&v.vt) == 1);
 
     /* key 13 is A2, the tract's gp = 100 */
@@ -344,6 +345,43 @@ static void test_voice(void)
     CHECK(v.p.gp == 0);
     vb_voice_null(&v);
     CHECK(v.p.ga == 0);
+
+    /* frication and nasal do not carry over from one phoneme to the next */
+    while (!vb_voice_done(&v))
+        vt_tick(&v.vt);
+    pot[VB_POT_SUS_VOLUME] = 90;
+    pot[VB_POT_SUS_PHONEME] = VB_PH_NOISE * 7;
+    vb_voice_sustain(&v, 13);
+    CHECK(v.p.fa == 40 && v.p.ff == 200);
+    pot[VB_POT_SUS_PHONEME] = VB_PH_SUSTAIN_AH * 7;
+    vb_voice_sustain(&v, 13);
+    CHECK(v.p.fa == 0 && v.p.na == 20);
+    pot[VB_POT_SUS_PHONEME] = VB_PH_HAT * 7;
+    vb_voice_sustain(&v, 13);
+    CHECK(v.p.fa == 0 && v.p.na == 0);
+    while (!vb_voice_done(&v))
+        vt_tick(&v.vt);
+    /* ...and a release ends with frication off */
+    pot[VB_POT_REL_PHONEME] = VB_PH_NOISE * 7;
+    vb_voice_release(&v, 13);
+    CHECK(v.p.fa == 0 && v.p.ga == 0 && v.p.aa == 0);
+    pot[VB_POT_REL_PHONEME] = 0;
+    while (!vb_voice_done(&v))
+        vt_tick(&v.vt);
+
+    /* velocity scales the amplitudes that are queued; bend shifts the pitch */
+    pot[VB_POT_SUS_PHONEME] = VB_PH_BEET * 7;
+    v.velocity = 64;
+    v.bend = 8;
+    vb_voice_sustain(&v, 13);
+    CHECK(v.p.gp == 108);
+    CHECK(v.p.ga == 24); /* the back-off still goes by the key, not the bend */
+    CHECK(v.vt.queue[v.vt.head].par[1] == 24 * 64 / 127);
+    CHECK(v.vt.queue[v.vt.head].par[0] == 3 * 64 / 127);
+    v.velocity = 127;
+    v.bend = 0;
+    while (!vb_voice_done(&v))
+        vt_tick(&v.vt);
 
     /* the closing fade leaves the formants alone whatever the knobs say */
     pot[VB_POT_REL_TIME] = VB_PH_HAT * 7;
@@ -500,6 +538,159 @@ static void test_instrument_formants(void)
     samples_free(&s);
 }
 
+static void test_instrument_first_note(void)
+{
+    uint64_t hash[2];
+    int crackle;
+
+    /* A fresh voice's first note must not overload: with and without the
+     * crackle it has to come out the same, which it only does if nothing
+     * overflowed. Four notes, so all four voices are fresh. */
+    for (crackle = 0; crackle < 2; crackle++) {
+        static verbalizer vb;
+        samples s = { 0 };
+        int note;
+
+        vb_init(&vb);
+        vb_set_crackle(&vb, crackle != 0);
+        load_patch(&vb, tsr_patch);
+        for (note = 45; note < 49; note++) {
+            vb_note_on(&vb, note);
+            render(&vb, &s, 3000, 256);
+        }
+        hash[crackle] = samples_hash(&s);
+        samples_free(&s);
+    }
+    CHECK(hash[0] == hash[1]);
+}
+
+static void test_instrument_rest(void)
+{
+    static verbalizer vb;
+    samples s = { 0 };
+    size_t i;
+    bool all_zero = true;
+
+    /* after a note the output comes back to exactly zero */
+    vb_init(&vb);
+    load_patch(&vb, tsr_patch);
+    vb.pot[VB_POT_SUS_PHONEME] = VB_PH_NOISE * 7; /* used to hiss for ever */
+    vb_note_on(&vb, 45);
+    render(&vb, &s, 6000, 256);
+    vb_note_off(&vb, 45);
+    render(&vb, &s, 30000, 256);
+    for (i = s.count - 10000; i < s.count; i++)
+        all_zero = all_zero && s.data[i] == 0;
+    CHECK(all_zero);
+    CHECK(vb_idle(&vb));
+    samples_free(&s);
+}
+
+static void test_instrument_midi(void)
+{
+    static verbalizer vb;
+    samples s = { 0 };
+    int32_t loud, soft;
+
+    vb_init(&vb);
+    load_patch(&vb, tsr_patch);
+
+    /* a note on and off inside one 2 ms scan still sounds, then ends */
+    CHECK(vb_midi(&vb, 0x90, 45, 127));
+    CHECK(vb_midi(&vb, 0x80, 45, 0));
+    render(&vb, &s, 2000, 256);
+    CHECK(peak(s.data, s.count) > (1 << 24));
+    render(&vb, &s, 20000, 256);
+    CHECK(vb_idle(&vb));
+    s.count = 0;
+
+    /* velocity: a soft note is quieter than a hard one */
+    vb_midi(&vb, 0x93, 45, 127);
+    render(&vb, &s, 8000, 256);
+    loud = peak(s.data + 4000, 4000);
+    vb_midi(&vb, 0x93, 45, 0); /* note on with velocity 0 is a note off */
+    render(&vb, &s, 20000, 256);
+    CHECK(vb_idle(&vb));
+    s.count = 0;
+    vb_midi(&vb, 0x90, 45, 40);
+    render(&vb, &s, 8000, 256);
+    soft = peak(s.data + 4000, 4000);
+    CHECK(soft > 0 && soft < loud / 2);
+
+    /* pedal: the note outlives its key, until the pedal comes up */
+    CHECK(vb_midi(&vb, 0xB0, VB_CC_PEDAL, 127));
+    vb_midi(&vb, 0x80, 45, 0);
+    render(&vb, &s, 20000, 256);
+    CHECK(!vb_idle(&vb));
+    CHECK(peak(s.data + s.count - 4000, 4000) > soft / 2);
+    vb_midi(&vb, 0xB0, VB_CC_PEDAL, 0);
+    render(&vb, &s, 20000, 256);
+    CHECK(vb_idle(&vb));
+
+    /* pitch bend in quarter-semitone steps: the wheel spans -8..+7 of them */
+    CHECK(vb_midi(&vb, 0xE0, 0x7F, 0x7F));
+    vb_midi(&vb, 0x90, 45, 127);
+    render(&vb, &s, 2000, 256);
+    CHECK(vb.voice[0].p.gp == 107);
+    vb_midi(&vb, 0xE0, 0, 0); /* fully down */
+    render(&vb, &s, 4000, 256);
+    CHECK(vb.voice[0].p.gp == 92);
+    vb_midi(&vb, 0xE0, 0, 0x40); /* centre */
+    render(&vb, &s, 4000, 256);
+    CHECK(vb.voice[0].p.gp == 100);
+
+    /* controllers: knobs, mode, crackle, all notes off */
+    CHECK(vb_midi(&vb, 0xB0, VB_CC_KNOB_FIRST + 7, 127));
+    CHECK(vb.pot[7] == 255);
+    vb_midi(&vb, 0xB0, VB_CC_KNOB_FIRST + 7, 0);
+    CHECK(vb.pot[7] == 0);
+    vb_midi(&vb, 0xB0, VB_CC_KNOB_FIRST + 15, 64);
+    CHECK(vb.pot[15] == 129);
+    CHECK(vb_midi(&vb, 0xB0, VB_CC_CRACKLE, 127));
+    CHECK(!vb.voice[0].vt.saturate);
+    vb_midi(&vb, 0xB0, VB_CC_CRACKLE, 0);
+    CHECK(vb.voice[0].vt.saturate);
+    CHECK(vb_midi(&vb, 0xB0, VB_CC_ALL_NOTES_OFF, 0));
+    render(&vb, &s, 20000, 256);
+    CHECK(vb_idle(&vb));
+    CHECK(vb_midi(&vb, 0xB0, VB_CC_MODE, 0));
+    CHECK(vb.mode == VB_MODE_WORDS);
+    vb_midi(&vb, 0xB0, VB_CC_MODE, 127);
+    CHECK(vb.mode == VB_MODE_FORMANTS);
+    vb_midi(&vb, 0xB0, VB_CC_MODE, 64);
+    CHECK(vb.mode == VB_MODE_TSR);
+    CHECK(!vb_midi(&vb, 0xB0, 1, 64));  /* mod wheel: not used */
+    CHECK(!vb_midi(&vb, 0xC0, 5, 0));   /* program change: not used */
+    CHECK(total_dropped(&vb) == 0);
+    samples_free(&s);
+}
+
+static void test_instrument_mix(void)
+{
+    static verbalizer vb;
+    samples s = { 0 };
+    int32_t one, four;
+    int note;
+
+    /* one moderate voice is passed through at its own level... */
+    vb_init(&vb);
+    load_patch(&vb, tsr_patch);
+    vb_note_on(&vb, 45);
+    render(&vb, &s, 8000, 256);
+    one = peak(s.data + 4000, 4000);
+    CHECK(one > (1 << 24) && one < (1 << 30));
+
+    /* ...and four overdriven ones are squeezed under full scale, not clipped */
+    vb.pot[VB_POT_SUS_VOLUME] = 255;
+    for (note = 46; note < 49; note++)
+        vb_note_on(&vb, note);
+    render(&vb, &s, 12000, 256);
+    four = peak(s.data + 12000, 8000);
+    CHECK(four > (1 << 30));
+    CHECK(four < INT32_MAX - (1 << 24));
+    samples_free(&s);
+}
+
 /* Play a fixed pseudo-random performance; events land every `step` samples. */
 static uint64_t performance(size_t chunk, unsigned *dropped)
 {
@@ -518,9 +709,13 @@ static uint64_t performance(size_t chunk, unsigned *dropped)
         r = (int)(rng >> 16);
         note = 33 + r % 37;
         if (r & 0x1000)
-            vb_note_on(&vb, note);
+            vb_note_on_velocity(&vb, note, 1 + (r & 127));
         else
             vb_note_off(&vb, note);
+        if (i % 37 == 0)
+            vb_set_pedal(&vb, (i / 37) & 1);
+        if (i % 11 == 0)
+            vb_set_pitch_bend(&vb, (int)(rng >> 18) - 8192);
         if (i == 150)
             vb_set_mode(&vb, VB_MODE_WORDS);
         if (i == 250)
@@ -530,6 +725,7 @@ static uint64_t performance(size_t chunk, unsigned *dropped)
         vb.pot[(r >> 4) & 15] = (uint8_t)(rng >> 8);
         render(&vb, &s, 500, chunk);
     }
+    vb_set_pedal(&vb, false);
     vb_all_keys_up(&vb);
     render(&vb, &s, 40000, chunk);
     CHECK(vb_idle(&vb));
@@ -570,6 +766,10 @@ int main(int argc, char **argv)
     test_instrument_polyphony();
     test_instrument_words();
     test_instrument_formants();
+    test_instrument_first_note();
+    test_instrument_rest();
+    test_instrument_midi();
+    test_instrument_mix();
     test_instrument_determinism();
 
     printf("%d checks, %d failed\n", checks, failures);

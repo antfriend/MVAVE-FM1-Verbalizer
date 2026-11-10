@@ -49,19 +49,24 @@ The original has about sixteen dedicated knobs. The FM-1 has four plus MASTER, s
 
 | Page | Knob 1 | Knob 2 | Knob 3 | Knob 4 |
 |---|---|---|---|---|
-| Trigger | phoneme | duration | — | — |
-| Sustain | phoneme | duration | vibrato depth | vibrato rate |
-| Release | phoneme | duration | — | — |
+| Trigger | phoneme | duration | volume | — |
+| Sustain | phoneme | duration | volume | — |
+| Release | phoneme | duration | volume | — |
+| Vibrato | trigger depth | trigger rate | sustain depth | sustain rate |
+| Vibrato 2 | release depth | release rate | echo | — |
 | Formants A | `f1` | `f2` | `f3` | `f4` |
 | Formants B | `aa` | `ga` | `na` | `nf` |
-| Formants C | `fa` | `ff` | pitch offset | glide time |
+| Formants C | `fa` | `ff` | `vp` | `vr` |
+| Formants D | pitch offset | glide time | — | — |
 
-This layout is a first draft and will change once it is playable.
+The first five pages hold the sixteen knobs of the Trigger / Sustain / Release mode and the last four the fourteen of Formants mode, so every control the engine has is on a page. In Formants mode the pitch `gp` comes from the key plus the pitch offset. Words mode uses the Trigger page's duration knob. The echo knob does nothing until the spatializer is ported. [docs/controls.md](docs/controls.md) says what each knob does.
+
+This layout is a draft and will change once it is playable.
 
 ### New on the FM-1 (*planned*)
 
 - Save Formants-mode creations as user phonemes, usable in the Trigger / Sustain / Release mode.
-- MIDI CC control of all 13 tract parameters.
+- MIDI CC control of all 13 tract parameters. *Done in the engine:* controllers 102–117 set the sixteen knobs, which in Formants mode are the tract parameters. Velocity, pitch bend and the sustain pedal work too. See [docs/midi.md](docs/midi.md).
 - An on-screen vocal-tract diagram showing the live parameter values.
 - Saturation in place of the original's overflow crackle, with the crackle kept as a setting. *Done in the engine:* overdriven voices clip by default, and `vb_set_crackle` brings the crackle back.
 
@@ -69,7 +74,7 @@ This layout is a first draft and will change once it is playable.
 
 1. **`VocalTract` in C.** *Done.* The Propeller assembly is translated to portable integer C. Its output matches the original assembly sample for sample, checked by running that assembly in an emulator. Comparing against recordings of the original hardware is still to do.
 2. **Sample rate.** *Decided in part.* Everything in the tract depends on its 20 kHz rate, so the engine keeps running at 20 kHz and stays bit-exact. Resampling its output to the FM-1's rate is not written yet.
-3. **Voice logic.** *Done.* `Voice.spin` and the key handling are ported: the phonemes, the three modes and four-voice allocation. The desktop build plays it from a text score of MIDI note numbers; it does not read MIDI files or ports.
+3. **Voice logic.** *Done.* `Voice.spin` and the key handling are ported: the phonemes, the three modes and four-voice allocation. The engine takes MIDI messages (notes with velocity, pitch bend, sustain pedal, controllers for every knob). The desktop build plays it from a text score; it does not read MIDI files or ports.
 4. **FM-1 integration.** *Not started.* Wrap the engine for the FM-1 on top of an existing open hardware layer, and build the paged UI.
 5. **Hardware testing.** *Not started.* CPU load with four voices, stereo output for the spatializer, and battery behaviour.
 
@@ -84,7 +89,7 @@ engine/     portable C vocal tract and voice logic, no hardware dependencies
 host/       desktop tools: render scores and tract scripts to WAV files
 tests/      engine tests and the reference hashes from the original assembly
 tools/      table generator and the reference emulator for VocalTract.spin
-docs/       control map, phoneme table, porting notes
+docs/       control map, phoneme table, MIDI map, porting notes
 firmware/   (planned) FM-1 integration: UI pages, parameter storage, MIDI mapping
 ```
 

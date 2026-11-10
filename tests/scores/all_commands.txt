@@ -1,0 +1,28 @@
+# Uses every score command once, so the parser is covered by the test run.
+mode tsr
+crackle on
+crackle off
+pots 115 20 90 0 0 87 60 90 12 150 101 40 0 60 0 0
+pot 2 120
+on 45
+on 52 40      # with a velocity
+wait 200
+bend 4096
+wait 200
+bend 0
+pedal on
+off 45
+off 52
+wait 200
+pedal off
+wait 200
+mode words
+pot 1 30
+on 50
+wait 300
+off 50
+mode formants
+pots 4 179 128 37 54 128 20 90 9 150 0 0 0 0 0 0
+on 45
+wait 200
+off 45

@@ -6,6 +6,8 @@ The engine keeps the original Verbalizer's control model: sixteen knobs with val
 
 Keys use the original's numbering. Key 1 is A1 (55 Hz) and each key is one semitone, so `key = MIDI note − 32`. The original keyboard had keys 1–37 (A1 to A4). The engine accepts keys −12 to 51 (MIDI 20 to 83), which is the range the tract's pitch byte can hold.
 
+Notes can also carry a velocity, bend in pitch and be held by a sustain pedal. Those arrive over MIDI and are described in [midi.md](midi.md).
+
 Glottal volume is backed off as keys go up: `key / 2` is subtracted from the requested amplitude, stopping at silence. On the top key of the original keyboard (37) that is 18, so a volume knob below about 57 is silent there, and below about 21 at key 13.
 
 ## Trigger / Sustain / Release mode

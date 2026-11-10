@@ -51,7 +51,7 @@ So the engine stays at 20 kHz and the firmware will resample its output to the F
 
 **`go` does not block.** The Spin `go` waited until one of eight frame buffers was free, stalling the whole main loop, key scanning included. Here the queue holds 32 frames and `vt_go` returns `false` when it is full. Ordinary playing queues at most 25 frames at once, and the tests check that none are dropped. `vt_full` still reports "8 or more queued" for code that wants the original's pacing.
 
-**Key handling is event-driven.** The original scanned a key matrix every 2 ms or so and derived trigger, sustain and release states from it. The engine takes key-down and key-up calls, keeps the same states, and runs the same per-mode logic every 40 samples (2 ms). A key pressed and released inside one 2 ms window is missed, as it was on the original.
+**Key handling is event-driven.** The original scanned a key matrix every 2 ms or so and derived trigger, sustain and release states from it. The engine takes key-down and key-up calls, keeps the same states, and runs the same per-mode logic every 40 samples (2 ms). A key pressed and released inside one 2 ms window, which the original missed, is played as the shortest possible note.
 
 **Formants mode pacing.** The original queued eight frames for every held key on every pass and let the blocking `go` set the pace. The engine queues a key's frames when voice 0 has run dry and takes held keys in turn. Knob changes are heard sooner as a result.
 
@@ -61,16 +61,24 @@ So the engine stays at 20 kHz and the firmware will resample its output to the F
 
 **Voices' noise is decorrelated.** Each tract's noise generator is advanced by a different amount at start-up. On the Propeller the four cogs started at different times; in C they would otherwise produce identical noise.
 
-**Mono.** The four voices are summed, halved and clipped. This is a placeholder for the spatializer, which also provided the echo.
+**Mono, with a soft limit.** The four voices are summed. Up to half of full scale the sum passes through untouched, so a single voice plays at its own level; above that it is squeezed smoothly towards full scale and never clips hard. This is a placeholder for the spatializer, which also provided the echo.
+
+**Voices start on a neutral vowel.** A new tract has its formants at 0 Hz, where the resonators have enormous gain, and the original's first note on each voice swept up from there with the sound already on. Each voice now parks its formants at 500, 1500, 2500 and 3500 Hz while still silent.
+
+**Silence is exactly zero.** The resonators' integer rounding leaves them stuck a few counts below zero after a sound dies away. The instrument clears that residue (`vt_settle`) once a voice is silent, so the output returns to 0 and the firmware can tell when nothing is playing. The tract on its own does not do this.
+
+**Velocity, pitch bend, sustain pedal, MIDI controllers.** New; see [midi.md](midi.md).
 
 ## Corrected bugs
 
-Three bugs in `Voice.spin` are fixed, so the port sounds different from the original where they applied.
+Four bugs in `Voice.spin` are fixed, so the port sounds different from the original where they applied.
 
 - **Vowel table.** Phonemes 9–19 were converted with the wrong divisor and wrapped in a byte, which put them about 1.6 times too high with a wrapped f4. They now use the tract's real units. See [phonemes.md](phonemes.md).
 - **Closing fade.** The fade used by Words and Formants modes looked up a phoneme with the release *time* knob, so that knob could bend the formants during the fade or even start a word. The fade now only drops to key 1's pitch and goes silent. With that knob below 21 nothing has changed.
 
 - **Volume back-off.** Glottal amplitude is reduced by `key / 2` to keep higher notes from overflowing. The original only did this when the requested amplitude was larger than `key / 2` and otherwise used it as it was, so on key 13 a volume of 7 gave 1 while a volume of 6 gave 6. Now the reduction always applies and stops at zero. The cost is a dead zone at the bottom of the volume knobs that grows with pitch.
+
+- **Frication and nasal settings stuck to a voice.** Nothing in Trigger / Sustain / Release mode ever turned frication off, so a voice that had played the noise phoneme hissed from then on, key up or down. The nasal settings of "ah" and of the word lingered the same way. Now every phoneme starts with both off, and silence turns frication off.
 
 ## The crackle
 

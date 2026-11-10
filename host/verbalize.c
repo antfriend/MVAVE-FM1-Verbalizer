@@ -9,8 +9,10 @@
  *   crackle on|off            wrap on overflow like the original (default off)
  *   pot <index> <value>       set one knob (index 0..15, value 0..255)
  *   pots <v0> <v1> ...        set knobs 0, 1, ... in order
- *   on <note>                 MIDI note on  (20..83)
+ *   on <note> [velocity]      MIDI note on  (20..83), velocity 1..127
  *   off <note>                MIDI note off
+ *   pedal on|off              sustain pedal
+ *   bend <value>              pitch bend, -8192..8191 for -2..+2 semitones
  *   wait <ms>                 let time pass
  *
  * When the score ends, all keys are released and the tail is rendered.
@@ -82,8 +84,22 @@ static bool play_line(verbalizer *vb, samples *out, char *line)
         }
         return true;
     }
-    if (strcmp(cmd, "on") == 0)
-        return vb_note_on(vb, (int)strtol(arg, NULL, 10));
+    if (strcmp(cmd, "on") == 0) {
+        char *velocity = strtok(NULL, " \t");
+
+        return vb_note_on_velocity(vb, (int)strtol(arg, NULL, 10),
+                                   velocity ? (int)strtol(velocity, NULL, 10) : 127);
+    }
+    if (strcmp(cmd, "pedal") == 0) {
+        if (strcmp(arg, "on") != 0 && strcmp(arg, "off") != 0)
+            return false;
+        vb_set_pedal(vb, strcmp(arg, "on") == 0);
+        return true;
+    }
+    if (strcmp(cmd, "bend") == 0) {
+        vb_set_pitch_bend(vb, (int)strtol(arg, NULL, 10));
+        return true;
+    }
     if (strcmp(cmd, "off") == 0)
         return vb_note_off(vb, (int)strtol(arg, NULL, 10));
     if (strcmp(cmd, "wait") == 0) {
