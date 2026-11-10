@@ -6,6 +6,7 @@
  * Score format, one command per line, '#' starts a comment:
  *
  *   mode words|tsr|formants   select the play mode
+ *   crackle on|off            wrap on overflow like the original (default off)
  *   pot <index> <value>       set one knob (index 0..15, value 0..255)
  *   pots <v0> <v1> ...        set knobs 0, 1, ... in order
  *   on <note>                 MIDI note on  (20..83)
@@ -54,6 +55,12 @@ static bool play_line(verbalizer *vb, samples *out, char *line)
             vb_set_mode(vb, VB_MODE_FORMANTS);
         else
             return false;
+        return true;
+    }
+    if (strcmp(cmd, "crackle") == 0) {
+        if (strcmp(arg, "on") != 0 && strcmp(arg, "off") != 0)
+            return false;
+        vb_set_crackle(vb, strcmp(arg, "on") == 0);
         return true;
     }
     if (strcmp(cmd, "pot") == 0) {

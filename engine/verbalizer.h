@@ -47,8 +47,16 @@ typedef struct {
     unsigned scan_countdown;
 } verbalizer;
 
-/* Reset everything: knobs at 0, Trigger/Sustain/Release mode, all silent. */
+/* Reset everything: knobs at 0, Trigger/Sustain/Release mode, all silent,
+ * crackle off. */
 void vb_init(verbalizer *vb);
+
+/*
+ * The original's arithmetic wraps when a voice is driven too hard, which is
+ * heard as bursts of loud noise. By default the voices clip instead. Pass
+ * true to get the original's crackle back.
+ */
+void vb_set_crackle(verbalizer *vb, bool on);
 
 void vb_set_mode(verbalizer *vb, vb_mode mode);
 

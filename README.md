@@ -63,7 +63,7 @@ This layout is a first draft and will change once it is playable.
 - Save Formants-mode creations as user phonemes, usable in the Trigger / Sustain / Release mode.
 - MIDI CC control of all 13 tract parameters.
 - An on-screen vocal-tract diagram showing the live parameter values.
-- Optional output saturation in place of the original's overflow crackle, with the crackle kept as a setting.
+- Saturation in place of the original's overflow crackle, with the crackle kept as a setting. *Done in the engine:* overdriven voices clip by default, and `vb_set_crackle` brings the crackle back.
 
 ## Porting plan
 
@@ -125,7 +125,9 @@ With a multi-configuration generator such as Visual Studio the program is in `bu
 
 ## License
 
-To be decided. `VocalTract` and `StereoSpatializer` remain under their MIT terms. If the firmware is built on a GPL-3.0 codebase, the combined firmware will be GPL-3.0.
+MIT. See [LICENSE](LICENSE). The vocal tract is derived from Chip Gracey's `VocalTract`, which Parallax also released under the MIT License; its notice is kept in [engine/vocal_tract.c](engine/vocal_tract.c).
+
+The FM-1 firmware is not written yet. If it is later built on a GPL-3.0 codebase, the combined firmware binary will have to be distributed under GPL-3.0, while the code in this repository stays MIT.
 
 ## Related
 

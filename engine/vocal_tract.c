@@ -155,6 +155,73 @@ static void cordic(uint32_t *px, uint32_t *py, uint32_t a)
     *py = y;
 }
 
+/* ---- saturating variants (vt_set_saturate) ------------------------------ */
+
+static uint32_t clamp32(int64_t v)
+{
+    if (v > INT32_MAX)
+        v = INT32_MAX;
+    if (v < INT32_MIN)
+        v = INT32_MIN;
+    return (uint32_t)(int32_t)v;
+}
+
+static uint32_t sat_add(uint32_t a, uint32_t b)
+{
+    return clamp32((int64_t)(int32_t)a + (int32_t)b);
+}
+
+/* The same rotation, but it cannot wrap. A vector no longer than 2^31 cannot
+ * overflow inside the rotation (its gain is 0.984), so that case uses the
+ * 32-bit routine. Longer vectors, which only arise once an input has already
+ * been clipped, are rotated in 64 bits and the result is clipped. */
+static void cordic_sat(uint32_t *px, uint32_t *py, uint32_t a)
+{
+    const int32_t safe = 0x5A827999; /* 2^31 / sqrt(2) */
+    int32_t sx = (int32_t)*px, sy = (int32_t)*py;
+    int64_t x, y, t;
+    uint32_t c;
+    int i;
+
+    if (sx > -safe && sx < safe && sy > -safe && sy < safe) {
+        cordic(px, py, a);
+        return;
+    }
+
+    x = sx >> 1;
+    x += x >> 3;
+    x += x >> 4;
+    y = sy >> 1;
+    y += y >> 3;
+    y += y >> 4;
+
+    t = x;
+    x -= y;
+    y += t;
+    a -= 0x80000000u;
+    c = a >> 31;
+
+    for (i = 1; i <= 13; i++) {
+        int64_t dx = y >> i;
+        int64_t dy = x >> i;
+
+        if (c) {
+            x += dx;
+            y -= dy;
+            if (i <= 12)
+                a += cordic_delta[i - 1];
+        } else {
+            x -= dx;
+            y += dy;
+            if (i <= 12)
+                a -= cordic_delta[i - 1];
+        }
+        c = a >> 31;
+    }
+    *px = clamp32(x);
+    *py = clamp32(y);
+}
+
 /* Run one segment of the frame handler. */
 static void frame_handler(vocal_tract *vt)
 {
@@ -233,6 +300,11 @@ void vt_init(vocal_tract *vt)
     vt->state = ST_START;
 }
 
+void vt_set_saturate(vocal_tract *vt, bool on)
+{
+    vt->saturate = on;
+}
+
 void vt_set_attenuation(vocal_tract *vt, unsigned level)
 {
     vt->attenuation = (uint8_t)(level > 31 ? 31 : level);
@@ -291,6 +363,7 @@ void vt_advance_noise(vocal_tract *vt, unsigned samples)
 int32_t vt_tick(vocal_tract *vt)
 {
     const uint32_t *p = vt->cur;
+    const bool sat = vt->saturate;
     uint32_t x, y, t1, t2;
     int32_t out;
     int i;
@@ -322,16 +395,27 @@ int32_t vt_tick(vocal_tract *vt)
     /* Vocal tract formants: four resonators in series */
     y = 0;
     for (i = 0; i < 4; i++) {
-        x += vt->fx[i];
-        y += vt->fy[i];
-        cordic(&x, &y, p[P_F1 + i]);
+        if (sat) {
+            x = sat_add(x, vt->fx[i]);
+            y = sat_add(y, vt->fy[i]);
+            cordic_sat(&x, &y, p[P_F1 + i]);
+        } else {
+            x += vt->fx[i];
+            y += vt->fy[i];
+            cordic(&x, &y, p[P_F1 + i]);
+        }
         vt->fx[i] = x;
         vt->fy[i] = y;
     }
 
     /* Nasal anti-formant */
-    vt->nx += x;
-    cordic(&x, &y, p[P_NF]);
+    if (sat) {
+        vt->nx = sat_add(vt->nx, x);
+        cordic_sat(&x, &y, p[P_NF]);
+    } else {
+        vt->nx += x;
+        cordic(&x, &y, p[P_NF]);
+    }
     t1 = mult(p[P_NA], x);
     x = vt->nx;
     vt->nx = 0u - t1;
@@ -341,7 +425,8 @@ int32_t vt_tick(vocal_tract *vt)
     vt->fphase += t1;
     vt->fphase += SAR(t1, 1);
     vt->fphase += p[P_FF] >> 1;
-    x += sine(p[P_FA], vt->fphase);
+    t1 = sine(p[P_FA], vt->fphase);
+    x = sat ? sat_add(x, t1) : x + t1;
 
     vt->x = x;
 

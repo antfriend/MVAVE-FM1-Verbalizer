@@ -6,7 +6,7 @@ The engine keeps the original Verbalizer's control model: sixteen knobs with val
 
 Keys use the original's numbering. Key 1 is A1 (55 Hz) and each key is one semitone, so `key = MIDI note − 32`. The original keyboard had keys 1–37 (A1 to A4). The engine accepts keys −12 to 51 (MIDI 20 to 83), which is the range the tract's pitch byte can hold.
 
-Glottal volume is backed off as keys go up: a requested amplitude above `key / 2` is reduced by `key / 2`.
+Glottal volume is backed off as keys go up: `key / 2` is subtracted from the requested amplitude, stopping at silence. On the top key of the original keyboard (37) that is 18, so a volume knob below about 57 is silent there, and below about 21 at key 13.
 
 ## Trigger / Sustain / Release mode
 
@@ -35,7 +35,6 @@ There are four voices. A fifth key waits until a voice has finished. A key that 
 | Knob | Use |
 |---|---|
 | 1 | Word duration |
-| 11 | value / 7 picks the phoneme whose formants the word's closing fade glides towards (0 leaves them alone) |
 
 Each key says the one built-in word ("blah") at its pitch. The word ends on its own; holding the key does nothing more. The falling tail comes from the closing fade gliding to key 1's pitch.
 
@@ -60,4 +59,4 @@ The knobs set the tract's parameters directly. Only voice 0 plays. While keys ar
 | 14 | `na` nasal amplitude | direct |
 | 15 | `nf` nasal frequency | direct, 19.53 Hz units |
 
-Knobs 11 and 12 are not tract parameters in this mode. Knob 11 still picks the phoneme used for the fade when a key is released, as it does in the original; leave it at 0 for a plain fade.
+Knobs 11 and 12 do nothing in this mode.

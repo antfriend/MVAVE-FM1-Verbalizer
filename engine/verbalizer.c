@@ -12,6 +12,8 @@
  *  - Changing mode releases all keys and fades the voices, so a held note
  *    cannot be left droning.
  *  - The stereo spatializer is not ported yet; the voices are mixed to mono.
+ *  - Overdriven voices clip instead of wrapping into noise, unless
+ *    vb_set_crackle() asks for the original behaviour.
  */
 #include "verbalizer.h"
 
@@ -140,10 +142,19 @@ void vb_init(verbalizer *vb)
     for (i = 0; i < VB_VOICES; i++) {
         vb_voice_start(&vb->voice[i], vb->pot);
         vt_advance_noise(&vb->voice[i].vt, (unsigned)i * 1000u);
+        vt_set_saturate(&vb->voice[i].vt, true);
         vb->voice_key[i] = NO_KEY;
     }
     for (i = 0; i < VB_VOICES; i++)
         vb_voice_null(&vb->voice[i]);
+}
+
+void vb_set_crackle(verbalizer *vb, bool on)
+{
+    int i;
+
+    for (i = 0; i < VB_VOICES; i++)
+        vt_set_saturate(&vb->voice[i].vt, !on);
 }
 
 void vb_set_mode(verbalizer *vb, vb_mode mode)

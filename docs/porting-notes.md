@@ -63,18 +63,29 @@ So the engine stays at 20 kHz and the firmware will resample its output to the F
 
 **Mono.** The four voices are summed, halved and clipped. This is a placeholder for the spatializer, which also provided the echo.
 
-## Kept quirks
+## Corrected bugs
 
-These look like bugs and are reproduced on purpose. See also [phonemes.md](phonemes.md).
+Three bugs in `Voice.spin` are fixed, so the port sounds different from the original where they applied.
 
-- The table vowels (phonemes 9–19) use the wrong frequency divisor and wrap in a byte.
-- The closing fade picks its phoneme with the release *time* knob.
-- Glottal amplitude is reduced by `key / 2`, but only when the requested value is larger than that.
-- Overflow in the tract wraps instead of clipping. This is the "crackle", and the volume knobs are how a player tames it.
+- **Vowel table.** Phonemes 9–19 were converted with the wrong divisor and wrapped in a byte, which put them about 1.6 times too high with a wrapped f4. They now use the tract's real units. See [phonemes.md](phonemes.md).
+- **Closing fade.** The fade used by Words and Formants modes looked up a phoneme with the release *time* knob, so that knob could bend the formants during the fade or even start a word. The fade now only drops to key 1's pitch and goes silent. With that knob below 21 nothing has changed.
+
+- **Volume back-off.** Glottal amplitude is reduced by `key / 2` to keep higher notes from overflowing. The original only did this when the requested amplitude was larger than `key / 2` and otherwise used it as it was, so on key 13 a volume of 7 gave 1 while a volume of 6 gave 6. Now the reduction always applies and stops at zero. The cost is a dead zone at the bottom of the volume knobs that grows with pitch.
+
+## The crackle
+
+The Propeller tract's arithmetic wraps on overflow. When a voice is driven too hard, usually by too much volume for the formants in use, the wrap is heard as bursts of loud noise. On the original the volume knobs were the only cure.
+
+The tract now has a second mode, `vt_set_saturate`, in which it clips instead. The sums into the four resonators, the nasal branch and the frication are saturating adds, and a resonator whose input has been clipped is rotated in 64 bits so that the rotation cannot wrap either. Nothing else changes, so a sound that never overflowed comes out bit for bit the same in both modes; the tests check this. An overdriven sound becomes a clipped, buzzy version of itself in place of noise.
+
+- `vocal_tract` on its own still starts in the original's wrapping mode, which is what the golden tests compare against the Propeller assembly.
+- The instrument turns saturation on for all four voices. `vb_set_crackle(vb, true)` restores the original behaviour, and score files can say `crackle on`.
+
+Things that still overflow by design: the oscillator phases, and glottal pitch plus deep vibrato at the very top of the pitch range, which wraps to a low pitch as before.
 
 ## Open questions for the firmware stage
 
 - Which sample rates the FM-1's audio path offers, and the cost of resampling there.
 - CPU load of four tracts on the AC791N. Per voice, each sample runs five CORDIC rotations of 14 shift-and-add steps and five small multiplies.
 - Whether to port the spatializer or use something lighter for stereo and echo.
-- The optional saturation in place of the crackle. It can clip the final mix cheaply, but true saturation inside the tract changes the resonators' behaviour and would need its own listening tests.
+- The cost of the saturating mode on the AC791N. It adds a 64-bit add and compare at ten places per voice per sample, and a 64-bit rotation only while a voice is actually clipping.

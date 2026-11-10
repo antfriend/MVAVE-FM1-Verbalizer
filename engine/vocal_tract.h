@@ -8,6 +8,10 @@
  * tools/pasm_ref.py). It uses integer arithmetic only and has no hardware
  * dependencies.
  *
+ * The original's arithmetic wraps on overflow, which is heard as loud noise
+ * bursts ("crackle") when amplitudes are pushed too far. vt_set_saturate()
+ * makes the tract clip instead. Sounds that never overflowed are unaffected.
+ *
  * Usage: fill in a vt_params, call vt_go() to queue a glide towards those
  * values over a number of 700 us steps, and pull samples with vt_tick() or
  * vt_render(). Frames play back to back; when the queue runs dry the tract
@@ -64,6 +68,7 @@ typedef struct {
 
     /* settings */
     uint8_t  attenuation;          /* 0..7, 6 dB per step (an arithmetic shift) */
+    uint8_t  saturate;             /* clip on overflow instead of wrapping */
     uint32_t pace;                 /* percent, 100 = normal */
 
     /* frame handler */
@@ -83,8 +88,16 @@ typedef struct {
     uint32_t x;                    /* sample computed last tick */
 } vocal_tract;
 
-/* Reset to the power-on state: silent, queue empty, pace 100, attenuation 0. */
+/* Reset to the power-on state: silent, queue empty, pace 100, attenuation 0,
+ * and wrapping on overflow like the original. */
 void vt_init(vocal_tract *vt);
+
+/*
+ * Choose what happens when the tract's arithmetic overflows: false wraps, as
+ * the original does (bit-exact, crackles); true clips. As long as nothing
+ * overflows the two produce identical samples.
+ */
+void vt_set_saturate(vocal_tract *vt, bool on);
 
 /* Master attenuation, 0..7. Takes effect on the next sample. */
 void vt_set_attenuation(vocal_tract *vt, unsigned level);

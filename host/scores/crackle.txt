@@ -1,0 +1,39 @@
+# The same overdriven phrase twice: first with the original's overflow
+# crackle, then with the default clipping. Render it with:
+#   verbalize host/scores/crackle.txt crackle.wav
+
+mode tsr
+# trigger "boot", sustain "a", release "oh", with every volume knob at full
+pots 115 20 255 0 0    87 60 255 12 150    101 40 0 255 0 0
+
+crackle on
+on 45
+wait 700
+off 45
+wait 400
+on 52
+wait 700
+off 52
+wait 400
+on 40
+on 47
+wait 900
+off 40
+off 47
+wait 900
+
+crackle off
+on 45
+wait 700
+off 45
+wait 400
+on 52
+wait 700
+off 52
+wait 400
+on 40
+on 47
+wait 900
+off 40
+off 47
+wait 600

@@ -227,6 +227,67 @@ static void test_tract_timing(void)
     CHECK(vt.pace == 50);
 }
 
+/* Play a steady "ah" at the given glottal amplitude and report the largest
+ * step between neighbouring samples; a wrap shows up as a step near 2^32. */
+static int64_t ah_max_step(int ga, bool saturate, uint64_t *hash)
+{
+    static vocal_tract vt;
+    samples s = { 0 };
+    vt_params p;
+    int64_t worst = 0;
+    int32_t *dst;
+    size_t i;
+
+    memset(&p, 0, sizeof p);
+    p.gp = 100;
+    p.f1 = 37;
+    p.f2 = 54;
+    p.f3 = 128;
+    p.f4 = 178;
+    vt_init(&vt);
+    vt_set_saturate(&vt, saturate);
+    vt_go(&vt, &p, 1);
+    p.ga = (uint8_t)ga;
+    vt_go(&vt, &p, 20);
+    dst = samples_reserve(&s, 8000);
+    if (!dst) {
+        printf("out of memory\n");
+        exit(1);
+    }
+    vt_render(&vt, dst, 8000);
+    samples_commit(&s, 8000);
+    for (i = 1; i < s.count; i++) {
+        int64_t step = (int64_t)s.data[i] - s.data[i - 1];
+
+        if (step < 0)
+            step = -step;
+        if (step > worst)
+            worst = step;
+    }
+    *hash = samples_hash(&s);
+    samples_free(&s);
+    return worst;
+}
+
+static void test_tract_saturate(void)
+{
+    const int64_t full_scale = (int64_t)1 << 31;
+    uint64_t wrap_hash, sat_hash;
+    int64_t wrap_step, sat_step;
+
+    /* a sound that does not overflow is the same either way, bit for bit */
+    ah_max_step(40, false, &wrap_hash);
+    ah_max_step(40, true, &sat_hash);
+    CHECK(wrap_hash == sat_hash);
+
+    /* overdriven, the original wraps from rail to rail; saturating clips */
+    wrap_step = ah_max_step(150, false, &wrap_hash);
+    sat_step = ah_max_step(150, true, &sat_hash);
+    CHECK(wrap_hash != sat_hash);
+    CHECK(wrap_step > full_scale + full_scale / 2);
+    CHECK(sat_step < full_scale);
+}
+
 static void test_voice(void)
 {
     static vb_voice v;
@@ -247,10 +308,10 @@ static void test_voice(void)
     CHECK(v.p.gp == 100);
     CHECK(v.p.vp == 10);
     CHECK(v.p.vr == 52);
-    CHECK(v.p.f1 == 23);     /* (280 + 6) / 12 */
-    CHECK(v.p.f2 == 170);
-    CHECK(v.p.f3 == 253);
-    CHECK(v.p.f4 == 44);     /* (3600 + 6) / 12 = 300, wrapped to a byte */
+    CHECK(v.p.f1 == 14);     /* 280 Hz in 19.53 Hz units */
+    CHECK(v.p.f2 == 104);
+    CHECK(v.p.f3 == 155);
+    CHECK(v.p.f4 == 184);    /* 3600 Hz; the original wrapped this to 44 */
     CHECK(v.p.ga == 30 - 6); /* volume 30, backed off by key / 2 */
     CHECK(vt_queued(&v.vt) == 1 + 7);
 
@@ -260,12 +321,19 @@ static void test_voice(void)
     vb_voice_sustain(&v, 13);
     CHECK(v.p.f1 == 15 && v.p.f2 == 102 && v.p.f3 == 158 && v.p.f4 == 189);
     CHECK(v.p.aa == 3);
-    CHECK(v.p.ga == 3); /* a volume at or below key / 2 is not backed off */
+    CHECK(v.p.ga == 0); /* volume 3 is below the back-off of 6: silent */
+    while (!vb_voice_done(&v)) /* make room in the queue */
+        vt_tick(&v.vt);
+    pot[VB_POT_SUS_VOLUME] = 21;
+    vb_voice_sustain(&v, 13);
+    CHECK(v.p.ga == 1); /* 7 - 6: just above it */
+    vb_voice_sustain(&v, 1);
+    CHECK(v.p.ga == 7); /* no back-off on the lowest key */
 
     /* release ends silent */
     vb_voice_release(&v, 13);
     CHECK(v.p.ga == 0 && v.p.aa == 0);
-    CHECK(vt_queued(&v.vt) == 1 + 7 + 7 + 8);
+    CHECK(vt_queued(&v.vt) == 7 + 7 + 8);
     CHECK(v.dropped == 0);
 
     /* keys beyond the original keyboard clamp instead of wrapping */
@@ -276,6 +344,13 @@ static void test_voice(void)
     CHECK(v.p.gp == 0);
     vb_voice_null(&v);
     CHECK(v.p.ga == 0);
+
+    /* the closing fade leaves the formants alone whatever the knobs say */
+    pot[VB_POT_REL_TIME] = VB_PH_HAT * 7;
+    vb_voice_sustain(&v, 13);
+    vb_voice_null(&v);
+    CHECK(v.p.f1 == 15 && v.p.f2 == 102);
+    CHECK(v.p.gp == 52 && v.p.ga == 0);
 }
 
 static void test_instrument_silence(void)
@@ -285,6 +360,11 @@ static void test_instrument_silence(void)
 
     vb_init(&vb);
     CHECK(vb.mode == VB_MODE_TSR);
+    CHECK(vb.voice[0].vt.saturate && vb.voice[3].vt.saturate);
+    vb_set_crackle(&vb, true);
+    CHECK(!vb.voice[0].vt.saturate && !vb.voice[3].vt.saturate);
+    vb_set_crackle(&vb, false);
+    CHECK(vb.voice[0].vt.saturate && vb.voice[3].vt.saturate);
     render(&vb, &s, 4000, 256);
     CHECK(peak(s.data, s.count) == 0);
     CHECK(vb_idle(&vb));
@@ -483,6 +563,7 @@ int main(int argc, char **argv)
     test_golden(argv[1]);
     test_tract_queue();
     test_tract_timing();
+    test_tract_saturate();
     test_voice();
     test_instrument_silence();
     test_instrument_tsr();

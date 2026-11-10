@@ -1,15 +1,20 @@
 /*
  * One Verbalizer voice. A port of Voice.spin by Dan Ray.
  *
- * This follows the Spin source closely, quirks included, because the quirks
- * are part of how the instrument sounds. Function names keep the original's
- * where there is one. Two things differ:
+ * This follows the Spin source closely. Function names keep the original's
+ * where there is one. These things differ:
  *
  *  - The original's v.go() blocked while the tract's eight frame buffers were
  *    full. Here the tract has a longer queue and go() never waits.
  *  - Keys outside the original keyboard's 1..37 are tolerated: the pitch is
  *    clamped to what gp can hold, and ga_wrapper() clamps its pitch term at
  *    zero so low keys can still be silenced. Keys 1..37 are unchanged.
+ *  - Three bugs are corrected. The table vowels (ee .. uh) are converted to
+ *    the tract's 19.53 Hz units like every other phoneme; the original divided
+ *    by 12 and let the result wrap in a byte. The closing fade no longer looks
+ *    up a phoneme with the release time knob. And the volume back-off for
+ *    higher keys applies to every volume; the original skipped it for volumes
+ *    at or below the back-off, so turning a volume down could make it louder.
  */
 #include "voice.h"
 
@@ -44,7 +49,7 @@ static void set_gp_to_pitch(vb_voice *v, int key)
     v->p.gp = BYTE(gp);
 }
 
-/* Set the glottal amplitude, backing it off for higher keys.
+/* Set the glottal amplitude, backing it off by key / 2 for higher keys.
  * Always set gp before calling this. */
 static void ga_wrapper(vb_voice *v, int value)
 {
@@ -52,7 +57,7 @@ static void ga_wrapper(vb_voice *v, int value)
 
     if (pitch < 0)
         pitch = 0;
-    v->p.ga = BYTE(value > pitch ? value - pitch : value);
+    v->p.ga = BYTE(value > pitch ? value - pitch : 0);
 }
 
 /* ---- phonemes ---------------------------------------------------------- */
@@ -76,17 +81,9 @@ static const uint16_t f2s[11] = { 2040, 2060, 1950, 1800, 1100,  900, 1000,  850
 static const uint16_t f3s[11] = { 3040, 2700, 2600, 2550, 2500, 2450, 2400, 2400, 1500, 2700, 2600 };
 static const uint16_t f4s[11] = { 3600, 3570, 3400, 3400, 3500, 3500, 3500, 3500, 3050, 3600, 3100 };
 
-/* The table vowels divide by 12 rather than 19.53 and are not clamped, so
- * they sit higher than their nominal frequencies and the largest wrap: ee's
- * f4 of 3600 becomes 300, stored as 44. That is the original's behaviour. */
 static void table_vowel(vb_voice *v, int i)
 {
-    const int jj = 19 - 7;
-
-    v->p.f1 = BYTE((f1s[i] + jj / 2) / jj);
-    v->p.f2 = BYTE((f2s[i] + jj / 2) / jj);
-    v->p.f3 = BYTE((f3s[i] + jj / 2) / jj);
-    v->p.f4 = BYTE((f4s[i] + jj / 2) / jj);
+    setformants(v, f1s[i], f2s[i], f3s[i], f4s[i]);
     ga_wrapper(v, 30);
     v->p.aa = 0;
     v->p.fa = 0;
@@ -265,9 +262,8 @@ void vb_voice_formants(vb_voice *v, int key)
 
 void vb_voice_null(vb_voice *v)
 {
-    /* The original picks the phoneme with the release TIME knob here, at
-     * key 1's pitch, which is what gives a word its falling tail. */
-    Select_Allophone(v, v->pot[VB_POT_REL_TIME], 1);
+    /* fade while falling to key 1's pitch, which gives a word its tail */
+    set_gp_to_pitch(v, 1);
     ga_wrapper(v, 0);
     v->p.aa = 0;
     v->p.fa = 0;
