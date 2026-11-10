@@ -1,0 +1,18 @@
+# Noise sources and the nasal branch: "sh", a breathy "h", then "mmm-nah".
+set gp=92 f1=24 f2=87 f3=128 f4=179
+go 1
+set fa=40 ff=60            # sh
+go 30
+go 120
+set fa=0 aa=40             # h
+go 40
+go 80
+set aa=0 ga=25 na=255 nf=102 f1=13 f2=87   # m
+go 30
+go 120
+set na=60 nf=200 f1=37 f2=54 vp=6 vr=70    # nah
+go 50
+go 150
+set ga=0 na=0
+go 60
+run 9000

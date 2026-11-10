@@ -1,0 +1,66 @@
+# A short tour of the three modes. Render it with:
+#   verbalize host/scores/demo.txt demo.wav
+
+# --- Trigger / Sustain / Release -------------------------------------------
+# knobs:  phoneme time volume vib-depth vib-rate
+mode tsr
+pots 115 20 90 0 0    87 60 90 12 150    101 40 0 60 0 0
+#    ^ trigger: "boot"  ^ sustain: "a"     ^ release: "oh" (knob 12 is unused, 13 is its volume)
+
+on 45
+wait 600
+off 45
+wait 400
+on 52
+wait 600
+off 52
+wait 400
+
+# a chord: four voices
+on 45
+on 49
+on 52
+on 57
+wait 1200
+off 45
+off 49
+off 52
+off 57
+wait 700
+
+# The "BEER" knob settings noted in the original Voice.spin
+pots 0 0 255 47 165   31 14 105 8 115   118 95 0 3 3 74
+on 40
+wait 700
+off 40
+wait 500
+on 47
+wait 700
+off 47
+wait 700
+
+# --- Words -----------------------------------------------------------------
+mode words
+pot 1 60        # word duration
+on 45
+wait 900
+off 45
+on 50
+wait 900
+off 50
+wait 300
+
+# --- Formants --------------------------------------------------------------
+# knobs: aa f4 f3 f1 f2 pitch time ga vp vr fa - - ff na nf
+mode formants
+pots 4 179 128 37 54 128 20 90 9 150 0 0 0 0 0 0
+on 45
+wait 500
+pot 3 14        # sweep f1 and f2 by hand: "ah" to "ee"
+pot 4 104
+wait 500
+pot 3 37
+pot 4 54
+wait 500
+off 45
+wait 300

@@ -1,0 +1,5 @@
+# name samples fnv1a64 -- written by tools/pasm_ref.py --update
+consonants 9449 dfa1b32d01faa847
+overflow 5000 d9e58069c3d68326
+queue 3969 0c6f67d3f4dc2093
+vowel 6000 d7443ca41dfe5966

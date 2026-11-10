@@ -1,0 +1,15 @@
+# Numerical overflow, the Verbalizer's "crackle": the 32-bit wrap must be
+# reproduced exactly. Also drives every parameter to its extremes.
+set gp=140 ga=255 f1=40 f2=42 f3=44 f4=46
+go 20
+go 60
+set aa=255 fa=255 ff=255 na=255 nf=255 vp=255 vr=255
+go 30
+go 60
+set gp=255 f1=255 f2=255 f3=255 f4=255
+go 40
+set gp=0 f1=0 f2=0 f3=0 f4=0 nf=0 ff=0 vp=0 vr=0
+go 40
+set aa=0 ga=0 fa=0 na=0
+go 30
+run 5000

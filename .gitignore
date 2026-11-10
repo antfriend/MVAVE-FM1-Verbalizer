@@ -1,0 +1,20 @@
+# build output
+/build/
+/out/
+/cmake-build-*/
+*.o
+*.obj
+*.exe
+
+# rendered audio
+*.wav
+*.raw
+
+# Python
+__pycache__/
+*.pyc
+
+# editors
+.vs/
+.vscode/
+*.swp

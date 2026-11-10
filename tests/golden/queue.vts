@@ -1,0 +1,48 @@
+# Frame queue behaviour: more frames than the original's eight buffers (so go
+# has to wait), minimum-length frames, pace, attenuation, and gaps where the
+# tract runs dry and finalises its parameters.
+set gp=100 ga=20 f1=40 f2=56 f3=128 f4=179
+go 0
+set gp=104 f1=30
+go 1
+set gp=108 f1=50
+go 2
+set gp=112 f1=20 f2=90
+go 3
+set gp=116 f1=45 f2=60
+go 5
+set gp=120 aa=10
+go 7
+set gp=124 f3=140
+go 9
+set gp=128 f4=190
+go 11
+set gp=132 f1=35
+go 13
+set gp=136 f2=70
+go 15
+set gp=140 f1=40 aa=0
+go 17
+set gp=100
+go 19
+run 700
+pace 50
+set gp=148 ga=30
+go 20
+run 1000
+atten 2
+pace 200
+set gp=88 ga=10
+go 100
+set ga=0
+go 40
+run 1500
+atten 0
+set ga=20 gp=100
+go 3
+run 37
+go 2
+run 5
+set f1=60
+go 2
+run 600

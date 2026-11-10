@@ -4,7 +4,7 @@ A vocal-tract synthesizer firmware for the M-VAVE FM-1 pocket synth: a port of [
 
 Play phonemes, formants and word fragments from the FM-1's keys instead of FM patches.
 
-> **Status: planning / early development.** Nothing here is flashable yet. This README describes the design and the porting plan; sections marked *planned* are not implemented.
+> **Status: the sound engine runs on a desktop; nothing is flashable yet.** The vocal tract and the voice logic are ported to portable C and render WAV files on a PC. The FM-1 firmware itself has not been started. Sections marked *planned* are not implemented.
 
 > **Not affiliated with M-VAVE.** Custom firmware is installed at your own risk. See [Safety](#safety-and-recovery).
 
@@ -67,24 +67,48 @@ This layout is a first draft and will change once it is playable.
 
 ## Porting plan
 
-1. **`VocalTract` in C.** Translate the Propeller assembly to portable fixed-point C and build it on a desktop. Compare its output against recordings of the original hardware.
-2. **Sample rate.** The original runs at 20 kHz and its formant units (19.53 Hz steps) depend on that. Either rescale the coefficients for the FM-1's 44.1 kHz path, or run the tract at 22.05 kHz and upsample 2×.
-3. **Voice logic.** Port `Voice.spin`: the phoneme tables and the trigger, sustain and release sequencing. Drive it from MIDI on the desktop build.
-4. **FM-1 integration.** Wrap the engine for the FM-1 on top of an existing open hardware layer, and build the paged UI.
-5. **Hardware testing.** CPU load with four voices, stereo output for the spatializer, and battery behaviour.
+1. **`VocalTract` in C.** *Done.* The Propeller assembly is translated to portable integer C. Its output matches the original assembly sample for sample, checked by running that assembly in an emulator. Comparing against recordings of the original hardware is still to do.
+2. **Sample rate.** *Decided in part.* Everything in the tract depends on its 20 kHz rate, so the engine keeps running at 20 kHz and stays bit-exact. Resampling its output to the FM-1's rate is not written yet.
+3. **Voice logic.** *Done.* `Voice.spin` and the key handling are ported: the phonemes, the three modes and four-voice allocation. The desktop build plays it from a text score of MIDI note numbers; it does not read MIDI files or ports.
+4. **FM-1 integration.** *Not started.* Wrap the engine for the FM-1 on top of an existing open hardware layer, and build the paged UI.
+5. **Hardware testing.** *Not started.* CPU load with four voices, stereo output for the spatializer, and battery behaviour.
 
-## Repository layout (*planned*)
+The stereo spatializer, which also gave the original its echo, is not ported. The engine mixes its voices to mono for now.
+
+[docs/porting-notes.md](docs/porting-notes.md) has the details, including where the C code differs from the original on purpose.
+
+## Repository layout
 
 ```
 engine/     portable C vocal tract and voice logic, no hardware dependencies
-host/       desktop test harness: renders WAV files, compares against references
-firmware/   FM-1 integration: UI pages, parameter storage, MIDI mapping
-docs/       control maps, phoneme tables, porting notes
+host/       desktop tools: render scores and tract scripts to WAV files
+tests/      engine tests and the reference hashes from the original assembly
+tools/      table generator and the reference emulator for VocalTract.spin
+docs/       control map, phoneme table, porting notes
+firmware/   (planned) FM-1 integration: UI pages, parameter storage, MIDI mapping
 ```
 
 ## Building
 
-Not available yet. The FM-1 firmware build will need JieLi's PI32v2 toolchain (clang 4.0.1). The `engine/` and `host/` parts will build with any standard C compiler.
+The engine, the desktop tools and the tests build with CMake and any C99 compiler:
+
+```
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build
+```
+
+The FM-1 firmware build does not exist yet. It will need JieLi's PI32v2 toolchain (clang 4.0.1).
+
+## Hearing it
+
+`verbalize` plays a text score through the whole instrument and writes a 20 kHz mono WAV file. The demo score visits all three modes:
+
+```
+build/verbalize host/scores/demo.txt demo.wav
+```
+
+With a multi-configuration generator such as Visual Studio the program is in `build/Debug` or `build/Release`. The score format is described at the top of [host/verbalize.c](host/verbalize.c), and the knobs in [docs/controls.md](docs/controls.md) and [docs/phonemes.md](docs/phonemes.md).
 
 ## Safety and recovery
 

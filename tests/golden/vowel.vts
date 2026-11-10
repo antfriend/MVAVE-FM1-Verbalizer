@@ -1,0 +1,9 @@
+# A sustained "ah" at A2 with vibrato, then fade out.
+set gp=100 f1=37 f2=54 f3=128 f4=178
+go 1
+set ga=30 aa=2 vp=4 vr=52
+go 60
+go 200
+set ga=0 aa=0
+go 100
+run 6000
