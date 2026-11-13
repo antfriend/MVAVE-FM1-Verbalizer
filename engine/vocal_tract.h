@@ -24,6 +24,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "vb_platform.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

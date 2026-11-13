@@ -91,7 +91,7 @@ def main():
         " */",
         '#include "resampler.h"',
         "",
-        "const int16_t rs_table[RS_PHASES + 1][RS_TAPS] = {",
+        "const int16_t rs_table[RS_PHASES + 1][RS_TAPS] VB_DATA = {",
     ]
     for r in table():
         lines.append("    { " + ", ".join("%6d" % v for v in r) + " },")

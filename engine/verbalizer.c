@@ -20,8 +20,6 @@
  */
 #include "verbalizer.h"
 
-#include <string.h>
-
 /* Key states. The first four are the original's. */
 enum {
     SILENCE = 0,
@@ -38,24 +36,24 @@ enum {
 
 typedef void (*play_fn)(vb_voice *v, int key);
 
-static bool wants_voice(uint8_t state)
+VB_CODE static bool wants_voice(uint8_t state)
 {
     return state == TRIGGER || state == TAP;
 }
 
-static void started(verbalizer *vb, int k)
+VB_COLD_CODE static void started(verbalizer *vb, int k)
 {
     vb->key_state[k] = (uint8_t)(vb->key_state[k] == TAP ? TAP_PLAYED : SUSTAIN);
 }
 
-static void play(verbalizer *vb, int voice, int k, play_fn fn)
+VB_COLD_CODE static void play(verbalizer *vb, int voice, int k, play_fn fn)
 {
     vb->voice[voice].velocity = vb->key_velocity[k];
     fn(&vb->voice[voice], KEY_OF(k));
 }
 
 /* A key wants a voice. Returns true if it got one. */
-static bool go_if_available(verbalizer *vb, int k, play_fn fn)
+VB_COLD_CODE static bool go_if_available(verbalizer *vb, int k, play_fn fn)
 {
     int key = KEY_OF(k);
     int i;
@@ -79,7 +77,7 @@ static bool go_if_available(verbalizer *vb, int k, play_fn fn)
     return false; /* all voices busy; the key keeps trying */
 }
 
-static void scan_tsr(verbalizer *vb)
+VB_COLD_CODE static void scan_tsr(verbalizer *vb)
 {
     int k, i;
 
@@ -105,7 +103,7 @@ static void scan_tsr(verbalizer *vb)
     }
 }
 
-static void scan_words(verbalizer *vb)
+VB_COLD_CODE static void scan_words(verbalizer *vb)
 {
     int k;
 
@@ -115,7 +113,7 @@ static void scan_words(verbalizer *vb)
     }
 }
 
-static void scan_formants(verbalizer *vb)
+VB_COLD_CODE static void scan_formants(verbalizer *vb)
 {
     vb_voice *v = &vb->voice[0];
     int k, n;
@@ -144,7 +142,7 @@ static void scan_formants(verbalizer *vb)
     }
 }
 
-static void scan(verbalizer *vb)
+VB_COLD_CODE static void scan(verbalizer *vb)
 {
     int k, i;
 
@@ -173,13 +171,13 @@ static void scan(verbalizer *vb)
         vt_settle(&vb->voice[i].vt);
 }
 
-void vb_init(verbalizer *vb)
+VB_COLD_CODE void vb_init(verbalizer *vb)
 {
     int i;
 
-    memset(vb, 0, sizeof *vb);
+    vb_fill(vb, 0, sizeof *vb);
     vb->mode = VB_MODE_TSR;
-    memset(vb->key_velocity, 127, sizeof vb->key_velocity);
+    vb_fill(vb->key_velocity, 127, sizeof vb->key_velocity);
     for (i = 0; i < VB_VOICES; i++) {
         vb_voice_start(&vb->voice[i], vb->pot);
         vt_advance_noise(&vb->voice[i].vt, (unsigned)i * 1000u);
@@ -190,7 +188,7 @@ void vb_init(verbalizer *vb)
         vb_voice_null(&vb->voice[i]);
 }
 
-void vb_set_crackle(verbalizer *vb, bool on)
+VB_COLD_CODE void vb_set_crackle(verbalizer *vb, bool on)
 {
     int i;
 
@@ -198,18 +196,18 @@ void vb_set_crackle(verbalizer *vb, bool on)
         vt_set_saturate(&vb->voice[i].vt, !on);
 }
 
-static void silence_all(verbalizer *vb)
+VB_COLD_CODE static void silence_all(verbalizer *vb)
 {
     int i;
 
     vb->formants_fade_pending = 0;
-    memset(vb->key_state, SILENCE, sizeof vb->key_state);
-    memset(vb->key_pedalled, 0, sizeof vb->key_pedalled);
+    vb_fill(vb->key_state, SILENCE, sizeof vb->key_state);
+    vb_fill(vb->key_pedalled, 0, sizeof vb->key_pedalled);
     for (i = 0; i < VB_VOICES; i++)
         vb_voice_null(&vb->voice[i]);
 }
 
-void vb_set_mode(verbalizer *vb, vb_mode mode)
+VB_COLD_CODE void vb_set_mode(verbalizer *vb, vb_mode mode)
 {
     if (mode == vb->mode)
         return;
@@ -217,7 +215,7 @@ void vb_set_mode(verbalizer *vb, vb_mode mode)
     silence_all(vb);
 }
 
-bool vb_key_down_velocity(verbalizer *vb, int key, int velocity)
+VB_COLD_CODE bool vb_key_down_velocity(verbalizer *vb, int key, int velocity)
 {
     int k = key - VB_KEY_MIN;
 
@@ -235,12 +233,12 @@ bool vb_key_down_velocity(verbalizer *vb, int key, int velocity)
     return true;
 }
 
-bool vb_key_down(verbalizer *vb, int key)
+VB_COLD_CODE bool vb_key_down(verbalizer *vb, int key)
 {
     return vb_key_down_velocity(vb, key, 127);
 }
 
-static void release_key(verbalizer *vb, int k)
+VB_COLD_CODE static void release_key(verbalizer *vb, int k)
 {
     uint8_t *state = &vb->key_state[k];
 
@@ -255,7 +253,7 @@ static void release_key(verbalizer *vb, int k)
     }
 }
 
-bool vb_key_up(verbalizer *vb, int key)
+VB_COLD_CODE bool vb_key_up(verbalizer *vb, int key)
 {
     int k = key - VB_KEY_MIN;
 
@@ -270,22 +268,22 @@ bool vb_key_up(verbalizer *vb, int key)
     return true;
 }
 
-bool vb_note_on(verbalizer *vb, int note)
+VB_COLD_CODE bool vb_note_on(verbalizer *vb, int note)
 {
     return vb_key_down(vb, note - VB_MIDI_OFFSET);
 }
 
-bool vb_note_on_velocity(verbalizer *vb, int note, int velocity)
+VB_COLD_CODE bool vb_note_on_velocity(verbalizer *vb, int note, int velocity)
 {
     return vb_key_down_velocity(vb, note - VB_MIDI_OFFSET, velocity);
 }
 
-bool vb_note_off(verbalizer *vb, int note)
+VB_COLD_CODE bool vb_note_off(verbalizer *vb, int note)
 {
     return vb_key_up(vb, note - VB_MIDI_OFFSET);
 }
 
-void vb_set_pedal(verbalizer *vb, bool down)
+VB_COLD_CODE void vb_set_pedal(verbalizer *vb, bool down)
 {
     int k;
 
@@ -298,7 +296,7 @@ void vb_set_pedal(verbalizer *vb, bool down)
     }
 }
 
-void vb_set_pitch_bend(verbalizer *vb, int bend)
+VB_COLD_CODE void vb_set_pitch_bend(verbalizer *vb, int bend)
 {
     int i;
 
@@ -312,7 +310,7 @@ void vb_set_pitch_bend(verbalizer *vb, int bend)
         vb->voice[i].bend = (int8_t)bend;
 }
 
-bool vb_midi(verbalizer *vb, uint8_t status, uint8_t data1, uint8_t data2)
+VB_COLD_CODE bool vb_midi(verbalizer *vb, uint8_t status, uint8_t data1, uint8_t data2)
 {
     data1 &= 0x7F;
     data2 &= 0x7F;
@@ -357,7 +355,7 @@ bool vb_midi(verbalizer *vb, uint8_t status, uint8_t data1, uint8_t data2)
     }
 }
 
-void vb_all_keys_up(verbalizer *vb)
+VB_COLD_CODE void vb_all_keys_up(verbalizer *vb)
 {
     int k;
 
@@ -365,7 +363,7 @@ void vb_all_keys_up(verbalizer *vb)
         release_key(vb, k);
 }
 
-bool vb_idle(const verbalizer *vb)
+VB_COLD_CODE bool vb_idle(const verbalizer *vb)
 {
     int i;
 
@@ -384,25 +382,31 @@ bool vb_idle(const verbalizer *vb)
 
 /*
  * Mix limiter. Sums up to half of full scale pass through untouched. Beyond
- * that the excess e is replaced by h * e / (e + h), h being the headroom left,
- * which meets the straight part with the same slope and approaches full scale
- * without reaching it. Four full-scale voices come out at 94%.
+ * that the excess e is replaced by h * e / (e + h), h being the headroom left
+ * (also half of full scale), which meets the straight part with the same
+ * slope and approaches full scale without reaching it. Four full-scale
+ * voices come out at 94%.
+ *
+ * It is computed as h - h * (h / (e + h)) with the ratio in 16 fractional
+ * bits, which needs only a 32-bit division.
  */
-static int32_t soft_clip(int64_t sum)
+VB_CODE static int32_t soft_clip(int64_t sum)
 {
     const int64_t knee = (int64_t)1 << 30;
-    const uint64_t headroom = (uint64_t)INT32_MAX - (uint64_t)knee;
-    uint64_t mag, excess;
+    uint32_t ratio, mag;
+    int64_t total;
 
     if (sum >= -knee && sum <= knee)
         return (int32_t)sum;
-    mag = (uint64_t)(sum < 0 ? -sum : sum);
-    excess = mag - (uint64_t)knee;
-    mag = (uint64_t)knee + headroom * excess / (excess + headroom);
+    total = sum < 0 ? -sum : sum;                        /* e + h, up to 2^33 */
+    ratio = ((uint32_t)1 << 30) / (uint32_t)(total >> 16); /* h / (e + h), Q16 */
+    mag = ((uint32_t)1 << 31) - ((uint32_t)1 << 14) * ratio;
+    if (mag > (uint32_t)INT32_MAX)
+        mag = (uint32_t)INT32_MAX;
     return sum < 0 ? -(int32_t)mag : (int32_t)mag;
 }
 
-void vb_render(verbalizer *vb, int32_t *out, size_t count)
+VB_CODE void vb_render(verbalizer *vb, int32_t *out, size_t count)
 {
     while (count) {
         size_t n, i;

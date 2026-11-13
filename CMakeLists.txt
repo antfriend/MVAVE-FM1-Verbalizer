@@ -16,6 +16,7 @@ endif()
 add_library(verbalizer_engine STATIC
   engine/vocal_tract.c
   engine/vt_tables.c
+  engine/vt_tables_gen.c
   engine/voice.c
   engine/verbalizer.c
   engine/resampler.c

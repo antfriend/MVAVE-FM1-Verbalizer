@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# git apply needs the patch byte for byte
+firmware/*.patch text eol=lf

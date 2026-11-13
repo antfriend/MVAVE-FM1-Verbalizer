@@ -34,8 +34,6 @@
  */
 #include "vocal_tract.h"
 
-#include <string.h>
-
 #include "vt_tables.h"
 
 /* vt_params is copied in and out as 13 raw bytes. */
@@ -63,12 +61,12 @@ enum {
 #define TUNE      0x66920000u /* scale tuned to 110.00 Hz at gp = 100 */
 #define LFSR_TAPS 0x80061000u
 
-static const uint32_t cordic_delta[12] = {
+static const uint32_t cordic_delta[12] VB_DATA = {
     0x4B901476u, 0x27ECE16Du, 0x14444750u, 0x0A2C350Cu, 0x05175F85u, 0x028BD879u,
     0x0145F154u, 0x00A2F94Du, 0x00517CBBu, 0x0028BE60u, 0x00145F30u, 0x000A2F98u,
 };
 
-static uint32_t parity32(uint32_t v)
+VB_CODE static uint32_t parity32(uint32_t v)
 {
     v ^= v >> 16;
     v ^= v >> 8;
@@ -76,14 +74,14 @@ static uint32_t parity32(uint32_t v)
     return (0x6996u >> (v & 15)) & 1;
 }
 
-static uint32_t lfsr_next(uint32_t lfsr)
+VB_CODE static uint32_t lfsr_next(uint32_t lfsr)
 {
     return (lfsr << 1) | parity32(lfsr & LFSR_TAPS);
 }
 
 /* Antilog: top 4 bits of `log` are the whole part, the next 11 the fraction.
  * Returns 0x00010000..0xFFEA0000. */
-static uint32_t antilog(uint32_t log)
+VB_CODE static uint32_t antilog(uint32_t log)
 {
     return (0x10000u | vt_antilog_table[(log >> 17) & 0x7FF]) << (log >> 28);
 }
@@ -91,14 +89,14 @@ static uint32_t antilog(uint32_t log)
 /* Multiply: 15 top bits of unsigned `scale` by 17 top bits of signed `value`.
  * The original does this with 15 shift-and-add steps, which come to the same
  * 32-bit product. */
-static uint32_t mult(uint32_t scale, uint32_t value)
+VB_CODE static uint32_t mult(uint32_t scale, uint32_t value)
 {
     return (uint32_t)((int32_t)(scale >> 17) * ((int32_t)value >> 15));
 }
 
 /* Scaled sine: 15 top bits of `scale` times the sine of the 13 top bits of
  * `angle` (a full turn is 2^32). */
-static uint32_t sine(uint32_t scale, uint32_t angle)
+VB_CODE static uint32_t sine(uint32_t scale, uint32_t angle)
 {
     uint32_t a = angle >> 19;
     uint32_t i = a & 0x7FF;
@@ -114,7 +112,7 @@ static uint32_t sine(uint32_t scale, uint32_t angle)
 
 /* Cordic rotation: scale (x, y) by 0.60725 * 0.984 (the cordic gain correction
  * plus slight damping), then rotate by `a`, where 2^32 is 90 degrees. */
-static void cordic(uint32_t *px, uint32_t *py, uint32_t a)
+VB_CODE static void cordic(uint32_t *px, uint32_t *py, uint32_t a)
 {
     uint32_t x = *px, y = *py, t;
     uint32_t c;
@@ -157,7 +155,7 @@ static void cordic(uint32_t *px, uint32_t *py, uint32_t a)
 
 /* ---- saturating variants (vt_set_saturate) ------------------------------ */
 
-static uint32_t clamp32(int64_t v)
+VB_CODE static uint32_t clamp32(int64_t v)
 {
     if (v > INT32_MAX)
         v = INT32_MAX;
@@ -166,7 +164,7 @@ static uint32_t clamp32(int64_t v)
     return (uint32_t)(int32_t)v;
 }
 
-static uint32_t sat_add(uint32_t a, uint32_t b)
+VB_CODE static uint32_t sat_add(uint32_t a, uint32_t b)
 {
     return clamp32((int64_t)(int32_t)a + (int32_t)b);
 }
@@ -175,7 +173,7 @@ static uint32_t sat_add(uint32_t a, uint32_t b)
  * overflow inside the rotation (its gain is 0.984), so that case uses the
  * 32-bit routine. Longer vectors, which only arise once an input has already
  * been clipped, are rotated in 64 bits and the result is clipped. */
-static void cordic_sat(uint32_t *px, uint32_t *py, uint32_t a)
+VB_CODE static void cordic_sat(uint32_t *px, uint32_t *py, uint32_t a)
 {
     const int32_t safe = 0x5A827999; /* 2^31 / sqrt(2) */
     int32_t sx = (int32_t)*px, sy = (int32_t)*py;
@@ -223,7 +221,7 @@ static void cordic_sat(uint32_t *px, uint32_t *py, uint32_t a)
 }
 
 /* Run one segment of the frame handler. */
-static void frame_handler(vocal_tract *vt)
+VB_CODE static void frame_handler(vocal_tract *vt)
 {
     unsigned i;
 
@@ -292,80 +290,87 @@ static void frame_handler(vocal_tract *vt)
     }
 }
 
-void vt_init(vocal_tract *vt)
+VB_COLD_CODE void vt_init(vocal_tract *vt)
 {
-    memset(vt, 0, sizeof *vt);
+    vt_tables_init();
+    vb_fill(vt, 0, sizeof *vt);
     vt->pace = 100;
     vt->lfsr = 1;
     vt->state = ST_START;
 }
 
-void vt_set_saturate(vocal_tract *vt, bool on)
+VB_COLD_CODE void vt_set_saturate(vocal_tract *vt, bool on)
 {
     vt->saturate = on;
 }
 
-void vt_set_attenuation(vocal_tract *vt, unsigned level)
+VB_COLD_CODE void vt_set_attenuation(vocal_tract *vt, unsigned level)
 {
     vt->attenuation = (uint8_t)(level > 31 ? 31 : level);
 }
 
-void vt_set_pace(vocal_tract *vt, unsigned percent)
+VB_COLD_CODE void vt_set_pace(vocal_tract *vt, unsigned percent)
 {
     if (percent)
         vt->pace = percent;
 }
 
-bool vt_go(vocal_tract *vt, const vt_params *params, uint32_t time)
+/* Nothing in the sample path may need a 64-bit division: on the FM-1 that is
+ * a library call, and library code is not available to the audio interrupt
+ * while flash is being written. */
+
+VB_COLD_CODE bool vt_go(vocal_tract *vt, const vt_params *params, uint32_t time)
 {
     vt_frame *f;
-    uint64_t steps;
-    uint32_t step;
+    uint32_t steps, step;
 
     if (vt->count >= VT_QUEUE_FRAMES)
         return false;
 
-    steps = (uint64_t)time * 100 / vt->pace;
+    /* A step of 0 marks an empty slot in the original and would stall it.
+     * That needs a time above 16.7 million steps (over three hours), so
+     * limit the time to that; it also keeps the sum below in 32 bits. */
+    if (time > 0x01000000u)
+        time = 0x01000000u;
+    steps = time * 100u / vt->pace;
     if (steps < 2)
         steps = 2;
-    /* A step of 0 marks an empty slot in the original and would stall it;
-     * that needs a time above 16.7 million steps, so just keep it at 1. */
-    step = steps >= 0x01000000u ? 1 : (uint32_t)(0x01000000u / steps);
+    step = steps >= 0x01000000u ? 1 : 0x01000000u / steps;
 
     f = &vt->queue[(vt->head + vt->count) & (VT_QUEUE_FRAMES - 1)];
     f->step = step;
-    memcpy(f->par, params, VT_NUM_PARAMS);
+    vb_copy(f->par, params, VT_NUM_PARAMS);
     vt->count++;
     return true;
 }
 
-unsigned vt_queued(const vocal_tract *vt)
+VB_CODE unsigned vt_queued(const vocal_tract *vt)
 {
     return vt->count;
 }
 
-bool vt_empty(const vocal_tract *vt)
+VB_CODE bool vt_empty(const vocal_tract *vt)
 {
     return vt->count == 0;
 }
 
-bool vt_full(const vocal_tract *vt)
+VB_CODE bool vt_full(const vocal_tract *vt)
 {
     return vt->count >= VT_ORIGINAL_FRAMES;
 }
 
-void vt_advance_noise(vocal_tract *vt, unsigned samples)
+VB_COLD_CODE void vt_advance_noise(vocal_tract *vt, unsigned samples)
 {
     while (samples--)
         vt->lfsr = lfsr_next(lfsr_next(lfsr_next(vt->lfsr)));
 }
 
-static bool is_residue(uint32_t v)
+VB_CODE static bool is_residue(uint32_t v)
 {
     return v + 1024u < 2048u; /* -1024 <= v < 1024 */
 }
 
-bool vt_settle(vocal_tract *vt)
+VB_COLD_CODE bool vt_settle(vocal_tract *vt)
 {
     int i;
 
@@ -382,12 +387,12 @@ bool vt_settle(vocal_tract *vt)
     }
     vt->x = 0;
     vt->nx = 0;
-    memset(vt->fx, 0, sizeof vt->fx);
-    memset(vt->fy, 0, sizeof vt->fy);
+    vb_fill(vt->fx, 0, sizeof vt->fx);
+    vb_fill(vt->fy, 0, sizeof vt->fy);
     return true;
 }
 
-int32_t vt_tick(vocal_tract *vt)
+VB_CODE int32_t vt_tick(vocal_tract *vt)
 {
     const uint32_t *p = vt->cur;
     const bool sat = vt->saturate;
@@ -463,7 +468,7 @@ int32_t vt_tick(vocal_tract *vt)
     return out;
 }
 
-void vt_render(vocal_tract *vt, int32_t *out, size_t count)
+VB_CODE void vt_render(vocal_tract *vt, int32_t *out, size_t count)
 {
     size_t i;
 

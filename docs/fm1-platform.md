@@ -53,9 +53,41 @@ MIDI comes in over DIN, USB and Bluetooth as complete messages, which is what `v
 
 The SDK exposes the user flash partition as raw 4 KB sectors with read, write and erase. Writes briefly silence audio. It is not transactional, so patches need versioned, checksummed records.
 
+## What has been tried
+
+On a PC, with no device involved:
+
+- **The stock firmware builds.** The unmodified SDK builds its V14 firmware in a few seconds with the JieLi 2.5.3 toolchain. All 22 toolchain files match the hashes in the SDK's manifest.
+- **A firmware with the Verbalizer in it builds.** [firmware/](../firmware/README.md) adds the engine to the stock application, where it plays beside the stock instrument. It links, passes the SDK's checks and packages into an update file. It has not been run.
+- **The engine's code ends up where it must.** In the linked image all of it is in the RAM code section, and its disassembly shows no calls or jumps into flash.
+
+JieLi's installer refuses to run without the Code::Blocks editor installed. The toolchain files can instead be unpacked from the installer with `innoextract`; only the `pi32` folder is needed.
+
+## The program image is full
+
+This turned out to be the tightest constraint. The application's share of the flash is 453,921 bytes and the stock firmware uses 453,576 of them: 345 bytes are free. The size of the user partition (projects and samples) is fixed by the SDK's packager, which is hash-checked, so the image cannot grow.
+
+The engine first added 18.9 KB. What brought it down:
+
+| Measure | Saved |
+|---|---|
+| Build the antilog and sine tables in RAM at start-up ([engine/vt_tables_gen.c](../engine/vt_tables_gen.c)) instead of storing them. An integer routine reproduces both tables exactly; the tests compare them. | 7.6 KB |
+| Compile everything that does not run per sample for size (`VB_COLD_CODE`). | 2.2 KB |
+| Cut the stock DX7 factory bank from 128 voices to 16. | 9.1 KB |
+
+The last one takes something away from the stock instrument, and was only acceptable because this is a test build. Whatever comes next (screens, patch storage) needs room too, and the only large things the open application owns are its own screens (`app/screen.c`) and demo content. A finished Verbalizer firmware will have to replace those.
+
+RAM is not tight: the engine needs about 4 KB of working memory, 8 KB for the two tables and 9 KB of RAM-resident code and filter table, against 276 KB the stock firmware already uses.
+
+## Rules the engine now follows for this target
+
+- Every function carries `VB_CODE` or `VB_COLD_CODE` and every constant table `VB_DATA` ([engine/vb_platform.h](../engine/vb_platform.h)), which on this compiler place them in the SDK's RAM sections.
+- No C library calls. `memcpy`, `memmove` and `memset` live in flash on this firmware; the engine uses its own small loops.
+- No 64-bit division, which would be a library call.
+
 ## Not yet known
 
 - **Processor time.** How long four vocal tracts plus the resampler take per block on the AC791N, and so whether four voices fit. The stock firmware's own budget is not documented. This needs a device.
-- **RAM for the audio sections.** How much room the RAM code and data sections have once the stock engine is gone.
 - **What the analogue knob and each button do** on the panel, beyond their numbers. The stock application's source will say.
-- **Whether the engine can replace `fm1_engine_render` cleanly**, or whether other parts of the application expect the stock engine's projects, tracks and sequencer to exist.
+- **Whether the engine can replace `fm1_engine_render` outright.** The SDK's build script checks that the stock engine's functions are present, so the test build leaves it running and adds the Verbalizer to its output. The stock engine itself is in the closed library and cannot be left out.
+- **Whether masking interrupts is a sufficient lock** for the MIDI queue between the firmware's tasks and the audio interrupt.

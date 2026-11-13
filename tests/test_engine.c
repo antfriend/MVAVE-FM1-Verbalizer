@@ -108,12 +108,22 @@ static bool some_voice_has_key(const verbalizer *vb, int key)
 
 static void test_tables(void)
 {
+    vt_tables_init(); /* only does anything when built with VT_TABLES_IN_RAM */
     CHECK(vt_antilog_table[0] == 0);
     CHECK(vt_antilog_table[1] == 22);
     CHECK(vt_antilog_table[2047] == 65492);
     CHECK(vt_sine_table[0] == 0);
     CHECK(vt_sine_table[1] == 50);
     CHECK(vt_sine_table[2048] == 65535);
+
+    /* the start-up generator used on the FM-1 gives the same tables exactly */
+    {
+        static uint16_t antilog[2048], sine[2049];
+
+        vt_tables_generate(antilog, sine);
+        CHECK(memcmp(antilog, vt_antilog_table, sizeof antilog) == 0);
+        CHECK(memcmp(sine, vt_sine_table, sizeof sine) == 0);
+    }
 }
 
 static void test_golden(const char *dir)

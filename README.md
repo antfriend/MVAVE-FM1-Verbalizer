@@ -4,7 +4,7 @@ A vocal-tract synthesizer firmware for the M-VAVE FM-1 pocket synth: a port of [
 
 Play phonemes, formants and word fragments from the FM-1's keys instead of FM patches.
 
-> **Status: the sound engine runs on a desktop; nothing is flashable yet.** The vocal tract and the voice logic are ported to portable C and render WAV files on a PC. The FM-1 firmware itself has not been started. Sections marked *planned* are not implemented.
+> **Status: the sound engine runs on a desktop, and a first test firmware builds but has never been run on an FM-1.** The vocal tract and the voice logic are ported to portable C and render WAV files on a PC. A test firmware with the engine inside M-VAVE's open firmware compiles and packages; do not flash it without a recovery method ready. Sections marked *planned* are not implemented.
 
 > **Not affiliated with M-VAVE.** Custom firmware is installed at your own risk. See [Safety](#safety-and-recovery).
 
@@ -71,7 +71,7 @@ This layout is a draft and will change once it is playable.
 1. **`VocalTract` in C.** *Done.* The Propeller assembly is translated to portable integer C. Its output matches the original assembly sample for sample, checked by running that assembly in an emulator. Comparing against recordings of the original hardware is still to do.
 2. **Sample rate.** *Done.* Everything in the tract depends on its 20 kHz rate, so the engine keeps running at 20 kHz and stays bit-exact. A resampler converts its output to the FM-1's fixed 44.1 kHz and delivers it in the FM-1's block format (128 stereo frames, 24-bit).
 3. **Voice logic.** *Done.* `Voice.spin` and the key handling are ported: the phonemes, the three modes and four-voice allocation. The engine takes MIDI messages (notes with velocity, pitch bend, sustain pedal, controllers for every knob). The desktop build plays it from a text score; it does not read MIDI files or ports.
-4. **FM-1 integration.** *Not started; base chosen.* The firmware will be built on M-VAVE's official SDK, replacing its instrument with this engine, and will need the paged UI. [docs/fm1-platform.md](docs/fm1-platform.md) records what the SDK requires.
+4. **FM-1 integration.** *Started.* A first test firmware builds: the engine inside M-VAVE's official firmware, playing beside the stock instrument from the keys and MIDI, with one fixed patch and no screens of its own. It has not been run on a device. See [firmware/README.md](firmware/README.md); [docs/fm1-platform.md](docs/fm1-platform.md) records what the SDK requires. Still to do: the paged UI, patch storage, and making room for them, since the FM-1's program flash is full.
 5. **Hardware testing.** *Not started.* CPU load with four voices, stereo output for the spatializer, and battery behaviour.
 
 The stereo spatializer, which also gave the original its echo, is not ported. The engine mixes its voices to mono for now.
@@ -86,7 +86,7 @@ host/       desktop tools: render scores and tract scripts to WAV files
 tests/      engine tests and the reference hashes from the original assembly
 tools/      table generators and the reference emulator for VocalTract.spin
 docs/       control map, phoneme table, MIDI map, porting notes, FM-1 platform notes
-firmware/   (planned) FM-1 integration: UI pages, parameter storage, MIDI mapping
+firmware/   glue, patch and install script that put the engine into M-VAVE's FM-1 firmware
 ```
 
 ## Building
@@ -99,7 +99,7 @@ cmake --build build
 ctest --test-dir build
 ```
 
-The FM-1 firmware build does not exist yet. It will need M-VAVE's SDK and JieLi's Windows toolchain 2.5.3 (PI32v2 clang 4.0.1).
+The FM-1 test firmware needs M-VAVE's SDK and JieLi's Windows toolchain 2.5.3 (PI32v2 clang 4.0.1). [firmware/README.md](firmware/README.md) has the steps.
 
 ## Hearing it
 
@@ -131,7 +131,7 @@ With a multi-configuration generator such as Visual Studio the program is in `bu
 
 MIT. See [LICENSE](LICENSE). The vocal tract is derived from Chip Gracey's `VocalTract`, which Parallax also released under the MIT License; its notice is kept in [engine/vocal_tract.c](engine/vocal_tract.c).
 
-The FM-1 firmware is not written yet. It will be built on M-VAVE's official SDK, whose application code is GPL-3.0, so the firmware and its source will be distributed under GPL-3.0. The engine and tools in this repository stay MIT.
+The FM-1 firmware is built on M-VAVE's official SDK, whose application code is GPL-3.0, so a built firmware and its source are distributed under GPL-3.0. In this repository that applies to `firmware/fm1_open.patch`, which modifies M-VAVE's files. The engine, tools and the rest of `firmware/` stay MIT.
 
 ## Related
 

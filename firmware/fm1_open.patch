@@ -1,0 +1,97 @@
+diff --git a/app/board/audio.c b/app/board/audio.c
+index 26327aa..6160314 100644
+--- a/app/board/audio.c
++++ b/app/board/audio.c
+@@ -3,12 +3,14 @@
+ #include "fm1_gpio.h"
+ #include "fm1_engine_control.h"
+ #include "audio_output.h"
++#include "verbalizer/fm1_verbalizer.h"
+ #include <string.h>
+ 
+ #define DMA_ALIGNED __attribute__((aligned(32)))
+ static int32_t receive[2][FM1_BLOCK_WORDS] DMA_ALIGNED;
+ static int32_t transmit[2][FM1_BLOCK_WORDS] DMA_ALIGNED;
+ static int32_t rendered[FM1_BLOCK_WORDS] DMA_ALIGNED;
++static int32_t verbalizer_pcm[FM1_BLOCK_WORDS] DMA_ALIGNED;
+ static struct fm1_audio_stats statistics;
+ static uint32_t block_ticks, previous_tick;
+ static uint8_t initialized, previous_valid;
+@@ -44,6 +46,9 @@ FM1_AUDIO_CODE __attribute__((interrupt(""))) void fm1_audio_irq(void)
+         ++statistics.overruns;
+         return;
+     }
++    /* The Verbalizer plays beside the stock instrument; fm1_output_mix clips the sum. */
++    fm1_verbalizer_render(verbalizer_pcm, FM1_BLOCK_FRAMES);
++    for (unsigned i = 0; i < FM1_BLOCK_WORDS; ++i) rendered[i] += verbalizer_pcm[i];
+     fm1_output_mix(rendered);
+     uint32_t flags = fm1_audio_irq_save();
+     if (fm1_audio_half_owned(half) &&
+diff --git a/app/fm_factory.c b/app/fm_factory.c
+index c6f772d..8cea877 100644
+--- a/app/fm_factory.c
++++ b/app/fm_factory.c
+@@ -4,19 +4,22 @@
+ 
+ /* Expand once during startup, before the audio owners are running. MIDI
+  * program changes then read SRAM without decompression or heap allocation. */
+-static uint8_t factory_raw[FM1_FM_PROGRAMS*128];
++/* Verbalizer build: only the first FACTORY_KEPT voices are stored, to make
++ * room in the program image; the other program numbers repeat them. */
++enum { FACTORY_KEPT = 16 };
++static uint8_t factory_raw[FACTORY_KEPT*128];
+ static unsigned factory_ready;
+ static FM1_DSP_CODE void factory_init(void)
+ {
+     if (factory_ready) return;
+-    uint8_t *out=factory_raw;
+-    for (unsigned at=0;at<sizeof factory_packed;) {
++    uint8_t *out=factory_raw, *const end=factory_raw+sizeof factory_raw;
++    for (unsigned at=0;at<sizeof factory_packed && out<end;) {
+         unsigned token=factory_packed[at++];
+         if (token<128) *out++=(uint8_t)token;
+         else {
+             unsigned low=factory_packed[at++],distance=low&127U;
+             if (low&128U) distance|=(unsigned)factory_packed[at++]<<7;
+-            for (unsigned n=token-128+3;n;--n) { *out=out[-(int)distance]; ++out; }
++            for (unsigned n=token-128+3;n && out<end;--n) { *out=out[-(int)distance]; ++out; }
+         }
+     }
+     factory_ready=1;
+@@ -24,7 +27,7 @@ static FM1_DSP_CODE void factory_init(void)
+ FM1_DSP_CODE const uint8_t *groove_fm_factory_raw(unsigned program)
+ {
+     factory_init();
+-    return factory_raw+(program%FM1_FM_PROGRAMS)*128;
++    return factory_raw+(program%FACTORY_KEPT)*128;
+ }
+ FM1_DSP_CODE void groove_fm_factory(uint8_t p[156], unsigned program)
+ {
+diff --git a/app/midi_router.c b/app/midi_router.c
+index 5a375f4..a770ee4 100644
+--- a/app/midi_router.c
++++ b/app/midi_router.c
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: GPL-3.0-only WITH GPL-3.0-linking-exception */
+ #include "instrument.h"
+ #include "fm1_engine_control.h"
++#include "verbalizer/fm1_verbalizer.h"
+ #include <string.h>
+ #ifdef FM1_HOST_TEST
+ #include <stdatomic.h>
+@@ -281,6 +282,7 @@ int groove_midi_local(const uint8_t *m, size_t n)
+     }
+     unsigned ch = m[0] & 15U, targets = 0;
+     if (n != size(m[0])) return -1;
++    (void)fm1_verbalizer_midi(m, n); /* panel keys also play the Verbalizer */
+     for (unsigned t=0;t<GROOVE_TRACKS;++t)
+         if (groove_track_role(t) != GROOVE_TRACK_OFF && groove_midi_input_channel(t)==ch) targets |= 1U<<t;
+     /* An Off/unmapped channel is intentionally silent, not a queue failure.
+@@ -322,6 +324,7 @@ void fm1_app_midi_received(unsigned source, const uint8_t *m, size_t n)
+     unsigned clock = m[0] == 0xf8 || m[0] == 0xfa || m[0] == 0xfb || m[0] == 0xfc || m[0] == 0xf2;
+     if (clock && !groove_midi_clock_accept(source, m[0])) return;
+     (void)fm1_midi_post(m, n);
++    (void)fm1_verbalizer_midi(m, n); /* so does external MIDI */
+     if (m[0] == 0xff) enqueue(2, 0, (config.flags | config.thru) & 7U, 0xff, 0, 0);
+     if (((config.thru >> 3) & 3U) == source && m[0] != 0xff && (m[0] < 0xf0 || clock)) {
+         unsigned ports = config.thru & 7U & ~(1U << source) & fm1_midi_output_ports();
