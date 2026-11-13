@@ -29,7 +29,7 @@ This project moves that engine onto the FM-1, which adds a screen, patch storage
 
 - The FM-1's JieLi AC791N runs at 240 MHz and already renders 12 voices of 6-operator FM. One vocal tract needs a single 80 MHz Propeller cog.
 - The tract is integer-only DSP (shift-add multiply and CORDIC), so it needs no FPU.
-- The FM-1 has an active open custom-firmware scene with existing hardware layers, installers and a route back to the official firmware.
+- M-VAVE publishes an open firmware and SDK for the FM-1, with the hardware code in source, an installer and a route back to the official firmware. There is an active custom-firmware scene around it.
 
 ## Planned design
 
@@ -45,21 +45,17 @@ The original's three-position mode switch becomes three modes:
 
 ### Controls
 
-The original has about sixteen dedicated knobs. The FM-1 has four plus MASTER, so parameters are paged.
+The original has about sixteen dedicated knobs. The FM-1 has seven endless encoders and one analogue knob, plus 27 note keys (F3 to G5), 14 buttons and a 240 × 240 screen, so parameters are paged across the encoders.
 
-| Page | Knob 1 | Knob 2 | Knob 3 | Knob 4 |
-|---|---|---|---|---|
-| Trigger | phoneme | duration | volume | — |
-| Sustain | phoneme | duration | volume | — |
-| Release | phoneme | duration | volume | — |
-| Vibrato | trigger depth | trigger rate | sustain depth | sustain rate |
-| Vibrato 2 | release depth | release rate | echo | — |
-| Formants A | `f1` | `f2` | `f3` | `f4` |
-| Formants B | `aa` | `ga` | `na` | `nf` |
-| Formants C | `fa` | `ff` | `vp` | `vr` |
-| Formants D | pitch offset | glide time | — | — |
+| Page | Enc 1 | Enc 2 | Enc 3 | Enc 4 | Enc 5 | Enc 6 | Enc 7 |
+|---|---|---|---|---|---|---|---|
+| Trigger | phoneme | duration | volume | vibrato depth | vibrato rate | — | — |
+| Sustain | phoneme | duration | volume | vibrato depth | vibrato rate | — | — |
+| Release | phoneme | duration | volume | vibrato depth | vibrato rate | — | echo |
+| Formants A | `f1` | `f2` | `f3` | `f4` | `na` | `nf` | glide time |
+| Formants B | `ga` | `aa` | `fa` | `ff` | `vp` | `vr` | pitch offset |
 
-The first five pages hold the sixteen knobs of the Trigger / Sustain / Release mode and the last four the fourteen of Formants mode, so every control the engine has is on a page. In Formants mode the pitch `gp` comes from the key plus the pitch offset. Words mode uses the Trigger page's duration knob. The echo knob does nothing until the spatializer is ported. [docs/controls.md](docs/controls.md) says what each knob does.
+Each phase of a keystroke has a page to itself, with the same five controls in the same places, and the fourteen Formants controls fill two pages exactly. Every control the engine has is on a page. In Formants mode the pitch `gp` comes from the key plus the pitch offset. Words mode uses the Trigger page's duration. The echo control does nothing until the spatializer is ported. The analogue knob and the buttons are not assigned yet. [docs/controls.md](docs/controls.md) says what each control does.
 
 This layout is a draft and will change once it is playable.
 
@@ -73,9 +69,9 @@ This layout is a draft and will change once it is playable.
 ## Porting plan
 
 1. **`VocalTract` in C.** *Done.* The Propeller assembly is translated to portable integer C. Its output matches the original assembly sample for sample, checked by running that assembly in an emulator. Comparing against recordings of the original hardware is still to do.
-2. **Sample rate.** *Decided in part.* Everything in the tract depends on its 20 kHz rate, so the engine keeps running at 20 kHz and stays bit-exact. Resampling its output to the FM-1's rate is not written yet.
+2. **Sample rate.** *Done.* Everything in the tract depends on its 20 kHz rate, so the engine keeps running at 20 kHz and stays bit-exact. A resampler converts its output to the FM-1's fixed 44.1 kHz and delivers it in the FM-1's block format (128 stereo frames, 24-bit).
 3. **Voice logic.** *Done.* `Voice.spin` and the key handling are ported: the phonemes, the three modes and four-voice allocation. The engine takes MIDI messages (notes with velocity, pitch bend, sustain pedal, controllers for every knob). The desktop build plays it from a text score; it does not read MIDI files or ports.
-4. **FM-1 integration.** *Not started.* Wrap the engine for the FM-1 on top of an existing open hardware layer, and build the paged UI.
+4. **FM-1 integration.** *Not started; base chosen.* The firmware will be built on M-VAVE's official SDK, replacing its instrument with this engine, and will need the paged UI. [docs/fm1-platform.md](docs/fm1-platform.md) records what the SDK requires.
 5. **Hardware testing.** *Not started.* CPU load with four voices, stereo output for the spatializer, and battery behaviour.
 
 The stereo spatializer, which also gave the original its echo, is not ported. The engine mixes its voices to mono for now.
@@ -85,11 +81,11 @@ The stereo spatializer, which also gave the original its echo, is not ported. Th
 ## Repository layout
 
 ```
-engine/     portable C vocal tract and voice logic, no hardware dependencies
+engine/     portable C vocal tract, voice logic and resampler, no hardware dependencies
 host/       desktop tools: render scores and tract scripts to WAV files
 tests/      engine tests and the reference hashes from the original assembly
-tools/      table generator and the reference emulator for VocalTract.spin
-docs/       control map, phoneme table, MIDI map, porting notes
+tools/      table generators and the reference emulator for VocalTract.spin
+docs/       control map, phoneme table, MIDI map, porting notes, FM-1 platform notes
 firmware/   (planned) FM-1 integration: UI pages, parameter storage, MIDI mapping
 ```
 
@@ -103,15 +99,18 @@ cmake --build build
 ctest --test-dir build
 ```
 
-The FM-1 firmware build does not exist yet. It will need JieLi's PI32v2 toolchain (clang 4.0.1).
+The FM-1 firmware build does not exist yet. It will need M-VAVE's SDK and JieLi's Windows toolchain 2.5.3 (PI32v2 clang 4.0.1).
 
 ## Hearing it
 
-`verbalize` plays a text score through the whole instrument and writes a 20 kHz mono WAV file. The demo score visits all three modes:
+`verbalize` plays a text score through the whole instrument and writes a mono WAV file. The demo score visits all three modes:
 
 ```
 build/verbalize host/scores/demo.txt demo.wav
+build/verbalize host/scores/demo.txt demo-fm1.wav 44100
 ```
+
+The first is the engine's own 20 kHz output. The second goes through the resampler and 24-bit output stage the firmware will use, at the FM-1's 44.1 kHz.
 
 With a multi-configuration generator such as Visual Studio the program is in `build/Debug` or `build/Release`. The score format is described at the top of [host/verbalize.c](host/verbalize.c), and the knobs in [docs/controls.md](docs/controls.md) and [docs/phonemes.md](docs/phonemes.md).
 
@@ -132,7 +131,7 @@ With a multi-configuration generator such as Visual Studio the program is in `bu
 
 MIT. See [LICENSE](LICENSE). The vocal tract is derived from Chip Gracey's `VocalTract`, which Parallax also released under the MIT License; its notice is kept in [engine/vocal_tract.c](engine/vocal_tract.c).
 
-The FM-1 firmware is not written yet. If it is later built on a GPL-3.0 codebase, the combined firmware binary will have to be distributed under GPL-3.0, while the code in this repository stays MIT.
+The FM-1 firmware is not written yet. It will be built on M-VAVE's official SDK, whose application code is GPL-3.0, so the firmware and its source will be distributed under GPL-3.0. The engine and tools in this repository stay MIT.
 
 ## Related
 

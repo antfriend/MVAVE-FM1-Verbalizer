@@ -1,7 +1,11 @@
 /*
  * verbalize: play a score through the whole instrument and write a WAV file.
  *
- *   verbalize score.txt out.wav
+ *   verbalize score.txt out.wav [44100]
+ *
+ * With 44100 the audio goes through the FM-1 output stage (the resampler and
+ * 24-bit conversion the firmware will use) and the file is written at
+ * 44.1 kHz. Otherwise it is the engine's own 20 kHz.
  *
  * Score format, one command per line, '#' starts a comment:
  *
@@ -16,23 +20,48 @@
  *   wait <ms>                 let time pass
  *
  * When the score ends, all keys are released and the tail is rendered.
- * Output is 20 kHz, 16-bit mono.
+ * Output is 16-bit mono.
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "hostlib.h"
+#include "resampler.h"
 #include "verbalizer.h"
 
+/* set when writing at the FM-1's rate */
+static vb_output *fm1_output;
+
+/* Render `n` samples of engine time (20 kHz). */
 static bool render(verbalizer *vb, samples *out, size_t n)
 {
-    int32_t *dst = samples_reserve(out, n);
+    int32_t *dst;
 
-    if (!dst)
-        return false;
-    vb_render(vb, dst, n);
-    samples_commit(out, n);
+    if (!fm1_output) {
+        dst = samples_reserve(out, n);
+        if (!dst)
+            return false;
+        vb_render(vb, dst, n);
+        samples_commit(out, n);
+        return true;
+    }
+    /* the same stretch of time in FM-1 blocks: 441 output frames per 200 */
+    n = n * RS_UP / RS_DOWN;
+    while (n) {
+        int32_t pcm[2 * VB_OUTPUT_MAX_FRAMES];
+        size_t frames = n < VB_OUTPUT_MAX_FRAMES ? n : VB_OUTPUT_MAX_FRAMES;
+        size_t i;
+
+        dst = samples_reserve(out, frames);
+        if (!dst)
+            return false;
+        vb_output_render(fm1_output, pcm, frames);
+        for (i = 0; i < frames; i++)
+            dst[i] = (int32_t)((uint32_t)pcm[2 * i] << 8); /* left channel, Q23 back to 32 bits */
+        samples_commit(out, frames);
+        n -= frames;
+    }
     return true;
 }
 
@@ -115,14 +144,16 @@ static bool play_line(verbalizer *vb, samples *out, char *line)
 int main(int argc, char **argv)
 {
     static verbalizer vb;
+    static vb_output output;
+    unsigned rate = VB_SAMPLE_RATE;
     samples out = { 0 };
     char line[512];
     FILE *f;
     int lineno = 0;
     int guard;
 
-    if (argc != 3) {
-        fprintf(stderr, "usage: verbalize score.txt out.wav\n");
+    if (argc != 3 && !(argc == 4 && strcmp(argv[3], "44100") == 0)) {
+        fprintf(stderr, "usage: verbalize score.txt out.wav [44100]\n");
         return 2;
     }
     f = fopen(argv[1], "r");
@@ -131,6 +162,11 @@ int main(int argc, char **argv)
         return 1;
     }
     vb_init(&vb);
+    if (argc == 4) {
+        vb_output_init(&output, &vb);
+        fm1_output = &output;
+        rate = RS_OUT_RATE;
+    }
     while (fgets(line, sizeof line, f)) {
         lineno++;
         if (!play_line(&vb, &out, line)) {
@@ -152,11 +188,11 @@ int main(int argc, char **argv)
     if (!render(&vb, &out, VB_SAMPLE_RATE / 4))
         return 1;
 
-    if (!wav_write(argv[2], &out, VB_SAMPLE_RATE)) {
+    if (!wav_write(argv[2], &out, rate)) {
         fprintf(stderr, "%s: cannot write\n", argv[2]);
         return 1;
     }
-    printf("%s: %.2f s\n", argv[2], (double)out.count / VB_SAMPLE_RATE);
+    printf("%s: %.2f s at %u Hz\n", argv[2], (double)out.count / rate, rate);
     samples_free(&out);
     return 0;
 }

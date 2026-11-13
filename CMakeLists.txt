@@ -17,7 +17,9 @@ add_library(verbalizer_engine STATIC
   engine/vocal_tract.c
   engine/vt_tables.c
   engine/voice.c
-  engine/verbalizer.c)
+  engine/verbalizer.c
+  engine/resampler.c
+  engine/resampler_table.c)
 target_include_directories(verbalizer_engine PUBLIC engine)
 
 # Desktop helpers: WAV output and the tract script player.
@@ -34,6 +36,9 @@ target_link_libraries(verbalize PRIVATE hostlib)
 enable_testing()
 add_executable(test_engine tests/test_engine.c)
 target_link_libraries(test_engine PRIVATE hostlib)
+if(UNIX)
+  target_link_libraries(test_engine PRIVATE m)
+endif()
 add_test(NAME engine COMMAND test_engine ${CMAKE_CURRENT_SOURCE_DIR}/tests/golden)
 
 # The desktop tools: every score in the repository has to play, and a broken
@@ -44,6 +49,8 @@ add_test(NAME score_crackle COMMAND verbalize
   ${CMAKE_CURRENT_SOURCE_DIR}/host/scores/crackle.txt ${CMAKE_CURRENT_BINARY_DIR}/crackle.wav)
 add_test(NAME score_all_commands COMMAND verbalize
   ${CMAKE_CURRENT_SOURCE_DIR}/tests/scores/all_commands.txt ${CMAKE_CURRENT_BINARY_DIR}/all_commands.wav)
+add_test(NAME score_demo_44k1 COMMAND verbalize
+  ${CMAKE_CURRENT_SOURCE_DIR}/host/scores/demo.txt ${CMAKE_CURRENT_BINARY_DIR}/demo_44k1.wav 44100)
 add_test(NAME score_bad_command COMMAND verbalize
   ${CMAKE_CURRENT_SOURCE_DIR}/tests/scores/bad_command.txt ${CMAKE_CURRENT_BINARY_DIR}/bad.wav)
 add_test(NAME score_bad_note COMMAND verbalize

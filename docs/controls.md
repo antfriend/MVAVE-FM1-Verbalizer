@@ -1,6 +1,6 @@
 # Controls of the original, as the engine sees them
 
-The engine keeps the original Verbalizer's control model: sixteen knobs with values 0–255 (`verbalizer.pot[]`), a three-way mode switch and a keyboard. The FM-1 firmware will page its four knobs onto these sixteen. The names in the tables are the `VB_POT_*` constants in [engine/voice.h](../engine/voice.h).
+The engine keeps the original Verbalizer's control model: sixteen knobs with values 0–255 (`verbalizer.pot[]`), a three-way mode switch and a keyboard. The FM-1 firmware will page its seven encoders onto these sixteen. The names in the tables are the `VB_POT_*` constants in [engine/voice.h](../engine/voice.h).
 
 ## Keys and pitch
 

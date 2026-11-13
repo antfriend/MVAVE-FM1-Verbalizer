@@ -9,11 +9,13 @@
  * instrument's key handling.
  */
 #include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "hostlib.h"
+#include "resampler.h"
 #include "verbalizer.h"
 #include "vt_tables.h"
 
@@ -691,6 +693,173 @@ static void test_instrument_mix(void)
     samples_free(&s);
 }
 
+/* ---- resampler ---------------------------------------------------------- */
+
+#define RS_TEST_IN  20000 /* one second in */
+#define RS_TEST_OUT 44100 /* ...is one second out */
+
+static const double two_pi = 6.283185307179586;
+
+/* Resample one second of a full-ish scale sine at `hz`. */
+static void resample_sine(double hz, double *out)
+{
+    static int32_t in[RS_TEST_IN], raw[RS_TEST_OUT];
+    resampler rs;
+    int i;
+
+    for (i = 0; i < RS_TEST_IN; i++)
+        in[i] = (int32_t)(1.5e9 * sin(two_pi * hz * i / RS_TEST_IN));
+    rs_init(&rs);
+    rs_process(&rs, in, raw, RS_TEST_OUT);
+    for (i = 0; i < RS_TEST_OUT; i++)
+        out[i] = raw[i] / 1.5e9;
+}
+
+/* Amplitude of the `hz` component of one second at 44.1 kHz, skipping the
+ * filter's start-up. Whole cycles fit, so other components do not leak in. */
+static double component(const double *x, double hz)
+{
+    double re = 0, im = 0;
+    int i, n = 0;
+
+    for (i = 4410; i < RS_TEST_OUT; i++, n++) {
+        re += x[i] * cos(two_pi * hz * i / RS_TEST_OUT);
+        im += x[i] * sin(two_pi * hz * i / RS_TEST_OUT);
+    }
+    return 2 * sqrt(re * re + im * im) / n;
+}
+
+static double db(double ratio)
+{
+    return 20 * log10(ratio > 1e-12 ? ratio : 1e-12);
+}
+
+static void test_resampler(void)
+{
+    static double y[RS_TEST_OUT];
+    static int32_t in[1000], a[2205], b[2205];
+    resampler rs, rs2;
+    size_t used, n;
+    int i;
+    bool same;
+
+    /* 441 out for every 200 in, however the calls are cut up */
+    rs_init(&rs);
+    CHECK(rs_input_needed(&rs, 441) == 200);
+    CHECK(rs_input_needed(&rs, 44100) == 20000);
+    for (i = 0; i < 1000; i++)
+        in[i] = (i * 7919 % 2001 - 1000) * 1000000;
+    rs_process(&rs, in, a, 2205);
+    rs_init(&rs2);
+    for (used = 0, n = 0; n < 2205; ) {
+        size_t chunk = 1 + (n * 31) % 128;
+        size_t need;
+
+        if (chunk > 2205 - n)
+            chunk = 2205 - n;
+        need = rs_input_needed(&rs2, chunk);
+        rs_process(&rs2, in + used, b + n, chunk);
+        used += need;
+        n += chunk;
+    }
+    CHECK(used == 1000);
+    CHECK(memcmp(a, b, sizeof a) == 0);
+
+    /* a constant comes through exactly, positive or negative */
+    for (i = 0; i < 1000; i++)
+        in[i] = -123456789;
+    rs_init(&rs);
+    rs_process(&rs, in, a, 2205);
+    same = true;
+    for (i = 100; i < 2205; i++)
+        same = same && a[i] == -123456789;
+    CHECK(same);
+
+    /* passband: level kept, and the image (20 kHz - f) well down */
+    resample_sine(1000, y);
+    CHECK(fabs(db(component(y, 1000))) < 0.05);
+    CHECK(db(component(y, 19000)) < -60);
+    resample_sine(5000, y);
+    CHECK(fabs(db(component(y, 5000))) < 0.05);
+    CHECK(db(component(y, 15000)) < -60);
+    resample_sine(7000, y);
+    CHECK(fabs(db(component(y, 7000))) < 0.1);
+    CHECK(db(component(y, 13000)) < -60);
+    resample_sine(8000, y);
+    CHECK(db(component(y, 8000)) > -1.2);
+    CHECK(db(component(y, 12000)) < -60);
+
+    /* full scale cannot wrap: the rails come through exactly, and the
+     * overshoot after a rail-to-rail step is clipped, not folded over */
+    for (i = 0; i < 1000; i++)
+        in[i] = i < 500 ? INT32_MIN : INT32_MAX;
+    rs_init(&rs);
+    rs_process(&rs, in, a, 2205);
+    same = true;
+    for (i = 100; i < 1050; i++)   /* well before the step */
+        same = same && a[i] == INT32_MIN;
+    for (i = 1150; i < 2205; i++)  /* well after it */
+        same = same && a[i] == INT32_MAX;
+    CHECK(same);
+    same = true;
+    for (i = 1125; i < 1150; i++)  /* just after: ringing, but never negative */
+        same = same && a[i] > 0;
+    CHECK(same);
+}
+
+static void test_fm1_output(void)
+{
+    static verbalizer vb, vb2;
+    static vb_output out, out2;
+    static int32_t pcm[2 * 128 * 40], pcm2[2 * 128 * 40];
+    int32_t biggest = 0;
+    bool stereo_same = true, in_range = true, silent = true;
+    int i, block;
+
+    /* silence in, silence out */
+    vb_init(&vb);
+    vb_output_init(&out, &vb);
+    for (block = 0; block < 10; block++)
+        vb_output_render(&out, pcm + block * 256, 128);
+    for (i = 0; i < 10 * 256; i++)
+        silent = silent && pcm[i] == 0;
+    CHECK(silent);
+
+    /* a note: both channels alike, inside 24 bits, and actually audible */
+    load_patch(&vb, tsr_patch);
+    vb_note_on(&vb, 57);
+    for (block = 0; block < 40; block++)
+        vb_output_render(&out, pcm + block * 256, 128);
+    for (i = 0; i < 40 * 128; i++) {
+        int32_t l = pcm[2 * i], r = pcm[2 * i + 1];
+
+        stereo_same = stereo_same && l == r;
+        in_range = in_range && l >= -8388608 && l <= 8388607;
+        if (l > biggest)
+            biggest = l;
+    }
+    CHECK(stereo_same);
+    CHECK(in_range);
+    CHECK(biggest > (1 << 16));
+
+    /* the block size does not change the audio */
+    vb_init(&vb2);
+    vb_output_init(&out2, &vb2);
+    for (block = 0; block < 10; block++)
+        vb_output_render(&out2, pcm2, 128);
+    load_patch(&vb2, tsr_patch);
+    vb_note_on(&vb2, 57);
+    for (i = 0; i < 40 * 128; ) {
+        size_t frames = 1 + (size_t)(i * 13) % 100;
+
+        if (frames > (size_t)(40 * 128 - i))
+            frames = (size_t)(40 * 128 - i);
+        vb_output_render(&out2, pcm2 + 2 * i, frames);
+        i += (int)frames;
+    }
+    CHECK(memcmp(pcm, pcm2, sizeof pcm) == 0);
+}
+
 /* Play a fixed pseudo-random performance; events land every `step` samples. */
 static uint64_t performance(size_t chunk, unsigned *dropped)
 {
@@ -770,6 +939,8 @@ int main(int argc, char **argv)
     test_instrument_rest();
     test_instrument_midi();
     test_instrument_mix();
+    test_resampler();
+    test_fm1_output();
     test_instrument_determinism();
 
     printf("%d checks, %d failed\n", checks, failures);
