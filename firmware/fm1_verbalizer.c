@@ -2,8 +2,19 @@
 /* The Verbalizer inside M-VAVE's open FM-1 firmware. See fm1_verbalizer.h. */
 #include "fm1_verbalizer.h"
 
-#include "fm1_audio.h"
 #include "resampler.h"
+
+/* What keeps the audio interrupt out while a task writes the queue. The
+ * browser preview and host tests run everything on one thread, and have no
+ * board header. */
+#ifdef FM1_HOST_TEST
+#define queue_lock() 0U
+#define queue_unlock(flags) ((void)(flags))
+#else
+#include "fm1_audio.h"
+#define queue_lock() fm1_audio_irq_save()
+#define queue_unlock(flags) fm1_audio_irq_restore(flags)
+#endif
 
 /* MIDI queue: written by tasks with interrupts masked, read by the audio
  * interrupt. Indexes only ever grow; the slot is index modulo the size. */
@@ -31,7 +42,7 @@ int fm1_verbalizer_midi(const uint8_t *message, size_t bytes)
 
     if (!message || bytes < 2 || bytes > 3 || message[0] < 0x80 || message[0] >= 0xf0)
         return -1;
-    flags = fm1_audio_irq_save();
+    flags = queue_lock();
     if (queue_in - queue_out < QUEUE_SIZE) {
         slot = queue_in & (QUEUE_SIZE - 1U);
         queue[slot][0] = message[0];
@@ -42,7 +53,7 @@ int fm1_verbalizer_midi(const uint8_t *message, size_t bytes)
     } else {
         dropped = dropped + 1U;
     }
-    fm1_audio_irq_restore(flags);
+    queue_unlock(flags);
     return result;
 }
 

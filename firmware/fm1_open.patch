@@ -95,3 +95,33 @@ index 5a375f4..a770ee4 100644
      if (m[0] == 0xff) enqueue(2, 0, (config.flags | config.thru) & 7U, 0xff, 0, 0);
      if (((config.thru >> 3) & 3U) == source && m[0] != 0xff && (m[0] < 0xf0 || clock)) {
          unsigned ports = config.thru & 7U & ~(1U << source) & fm1_midi_output_ports();
+diff --git a/web/engine/Simulator.c b/web/engine/Simulator.c
+index da571f2..82cc15d 100644
+--- a/web/engine/Simulator.c
++++ b/web/engine/Simulator.c
+@@ -7,6 +7,7 @@
+ #include "fm1_engine_control.h"
+ #include "audio_output.h"
+ #include "fm1_audio_io.h"
++#include "verbalizer/fm1_verbalizer.h"
+ #include <string.h>
+ #include <stdlib.h>
+ 
+@@ -28,6 +29,7 @@ static uint8_t radio_features, radio_role;
+ static struct { uint8_t data[3], count; } midi[MIDI_QUEUE];
+ static int32_t previous[FM1_BLOCK_WORDS];
+ static float output[FM1_BLOCK_WORDS];
++static int32_t verbalizer_pcm[FM1_BLOCK_WORDS];
+ static int16_t *sample_input;
+ static uint8_t *sample_encoded;
+ static unsigned sample_frames, sample_bytes;
+@@ -359,6 +361,9 @@ EXPORT("sim_render") const float *sim_render(void)
+         send(midi[midi_read].data, midi[midi_read].count); midi_read = (midi_read + 1) % MIDI_QUEUE;
+     }
+     (void)fm1_engine_render(previous, FM1_BLOCK_FRAMES);
++    /* As in app/board/audio.c: the Verbalizer plays beside the instrument. */
++    fm1_verbalizer_render(verbalizer_pcm, FM1_BLOCK_FRAMES);
++    for (unsigned i = 0; i < FM1_BLOCK_WORDS; ++i) previous[i] += verbalizer_pcm[i];
+     fm1_output_mix(previous);
+     frames += FM1_BLOCK_FRAMES; uint32_t next = (uint32_t)(frames * 1000U / 44100U);
+     unsigned poll = now_ms / 10U != next / 10U; now_ms = next;

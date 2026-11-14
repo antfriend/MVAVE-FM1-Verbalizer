@@ -4,7 +4,7 @@ A vocal-tract synthesizer firmware for the M-VAVE FM-1 pocket synth: a port of [
 
 Play phonemes, formants and word fragments from the FM-1's keys instead of FM patches.
 
-> **Status: the sound engine runs on a desktop, and a first test firmware builds but has never been run on an FM-1.** The vocal tract and the voice logic are ported to portable C and render WAV files on a PC. A test firmware with the engine inside M-VAVE's open firmware compiles and packages; do not flash it without a recovery method ready. Sections marked *planned* are not implemented.
+> **Status: the sound engine runs on a desktop, and a first test firmware builds but has never been run on an FM-1.** The vocal tract and the voice logic are ported to portable C and render WAV files on a PC. A test firmware with the engine inside M-VAVE's open firmware compiles and packages; do not flash it without a recovery method ready. The same build also runs in a browser through the SDK's simulator, where it can be played ([firmware/README.md](firmware/README.md)). Sections marked *planned* are not implemented.
 
 > **Not affiliated with M-VAVE.** Custom firmware is installed at your own risk. See [Safety](#safety-and-recovery).
 

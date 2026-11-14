@@ -23,7 +23,7 @@ The factory DX7 bank is the largest piece of data the open application owns (10.
 | File | What it is | Licence |
 |---|---|---|
 | `fm1_verbalizer.c`, `fm1_verbalizer.h` | Glue between the SDK and the engine: a MIDI queue filled by the firmware's tasks, and the render call for the audio interrupt | MIT |
-| `fm1_open.patch` | Changes to three of M-VAVE's source files | GPL-3.0, as a derivative of them |
+| `fm1_open.patch` | Changes to four of M-VAVE's source files: three in the firmware, one in the browser simulator | GPL-3.0, as a derivative of them |
 | `install.py` | Copies the engine and glue into an `fm1_open` checkout, applies the patch and trims the factory bank | MIT |
 
 The firmware built from this is a modified version of M-VAVE's application and is under GPL-3.0 with their SDK linking exception. Anyone you give a build to must also be able to get this source.
@@ -47,6 +47,21 @@ The update file is `build\dx7\generated\FM1_OFFICIAL_OPEN.fwsc`.
 
 Run `install.py` again after changing the engine; it refreshes the copy in the checkout.
 
+## Playing it in a browser
+
+The SDK can also compile the application to WebAssembly and wrap it in a page with the device's panel, screen and keys. The patch puts the Verbalizer into that build the same way as into the firmware, so the same glue and the same MIDI routing run there.
+
+```
+cd C:\git\fm1_open
+powershell -ExecutionPolicy Bypass -File tools\Build-Web.ps1 -LocalPreview
+```
+
+The first run downloads the WASI SDK (518 MB) into `build\tools`. Open `build\preview\index.html` in Chrome or Edge. The page's keys and a connected MIDI keyboard play the Verbalizer on top of the stock instrument. To hear it alone, send notes on a MIDI channel no track listens to.
+
+`node tests/web_smoke.mjs`, run from this repository, checks the compiled simulator without a browser.
+
+In the browser the stock instrument is M-VAVE's open stand-in for their closed sound library, so it does not sound exactly like the device. The Verbalizer is the same code in both.
+
 ## Before flashing
 
 Do not flash this until:
@@ -63,6 +78,8 @@ Checked on a PC:
 - The SDK's own build checks pass, including its checks on which code sits in RAM.
 - In the linked image, all of the engine's code is in the RAM code section, and its disassembly shows no calls or jumps into flash and no C library calls. This matters because the audio interrupt keeps running during flash writes, when flash cannot be reached.
 - The engine code that is compiled here is the same source that passes the desktop tests, including the bit-exact comparison with the original.
+
+- In the browser simulator, notes and controllers sent to the application's MIDI input reach the Verbalizer through the firmware's own router, it sounds, and it falls silent again (`tests/web_smoke.mjs`). This runs the glue and the patched router, but not the device's audio interrupt or its interrupt lock.
 
 Not checked, because it needs a device:
 
