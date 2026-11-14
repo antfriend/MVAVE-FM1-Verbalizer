@@ -28,7 +28,7 @@ index 26327aa..6160314 100644
      uint32_t flags = fm1_audio_irq_save();
      if (fm1_audio_half_owned(half) &&
 diff --git a/app/fm_factory.c b/app/fm_factory.c
-index c6f772d..8cea877 100644
+index c6f772d..2cb155f 100644
 --- a/app/fm_factory.c
 +++ b/app/fm_factory.c
 @@ -4,19 +4,22 @@
@@ -38,7 +38,7 @@ index c6f772d..8cea877 100644
 -static uint8_t factory_raw[FM1_FM_PROGRAMS*128];
 +/* Verbalizer build: only the first FACTORY_KEPT voices are stored, to make
 + * room in the program image; the other program numbers repeat them. */
-+enum { FACTORY_KEPT = 16 };
++enum { FACTORY_KEPT = 6 };
 +static uint8_t factory_raw[FACTORY_KEPT*128];
  static unsigned factory_ready;
  static FM1_DSP_CODE void factory_init(void)
@@ -95,6 +95,219 @@ index 5a375f4..a770ee4 100644
      if (m[0] == 0xff) enqueue(2, 0, (config.flags | config.thru) & 7U, 0xff, 0, 0);
      if (((config.thru >> 3) & 3U) == source && m[0] != 0xff && (m[0] < 0xf0 || clock)) {
          unsigned ports = config.thru & 7U & ~(1U << source) & fm1_midi_output_ports();
+diff --git a/app/screen.c b/app/screen.c
+index 811e5d1..19ee866 100644
+--- a/app/screen.c
++++ b/app/screen.c
+@@ -3,6 +3,7 @@
+ #include "fm_patch.h"
+ #include "version.h"
+ #include "fm1_engine_control.h"
++#include "verbalizer/fm1_verbalizer_ui.h"
+ #include <string.h>
+ enum {
+     BACK = 0x0000,
+@@ -123,7 +124,7 @@ static void text(unsigned x, unsigned y, const char *s, unsigned scale, uint16_t
+ }
+ /* Eight tracks stay visible on HOME. SEQ maps the sixteen white keys to one
+  * quarter of the 64-step pattern. All drawing and edits run on app_control. */
+-enum { OVERVIEW, STEPS, FM_EDIT, FM_ENV, FM_LFO, TONE_EDIT, MIX, BLE, PROJECT, NAME, EFFECTS, SOURCE, ACTIONS, STEP_EDIT, RHYTHM, FM_QUICK, PRESET_BROWSER, ARP_EDIT, STARTUP };
++enum { OVERVIEW, STEPS, FM_EDIT, FM_ENV, FM_LFO, TONE_EDIT, MIX, BLE, PROJECT, NAME, EFFECTS, SOURCE, ACTIONS, STEP_EDIT, RHYTHM, FM_QUICK, PRESET_BROWSER, ARP_EDIT, STARTUP, VERBALIZER };
+ enum { OCT_DOWN, OCT_UP, FX, SCL, ENV, LFO, EDIT, GLO, HOME, SAVE, ARP, SEQ, PLAY, REC };
+ #define BUTTON(b) (1U << (b))
+ static const uint16_t colors[8] = {0x3c9f, 0x07bf, 0x4eae, 0x06d4, 0xac9f, 0xed18, 0xff06, 0xfba5};
+@@ -158,7 +159,7 @@ static uint32_t midi_seen[8], midi_until[8];
+ static uint8_t midi_active[8];
+ static unsigned track, cursor, selected_note = 60, drum, writing, page, fm_group, op;
+ static unsigned music_page, subpage_return, project_return, rec_before_press, effects_page;
+-static unsigned seq_page, arp_page;
++static unsigned seq_page, arp_page, vb_page = 1;
+ static unsigned boot_active, boot_phase;
+ static uint32_t boot_started;
+ static const char *const seq_pages[] = {"1/8 BASIC", "2/8 STEP DETAILS", "3/8 RHYTHM/REC", "4/8 LOCKS", "5/8 SYNC / LOOP", "6/8 MIDI TRACK", "7/8 MIDI ROUTING", "8/8 TRACK ROLE"};
+@@ -676,7 +677,6 @@ static unsigned fm_parameter(unsigned col)
+         return 255;
+     return p->parameter[col] + (p->per_operator ? (5 - op) * 21 : 0);
+ }
+-static void algorithm_draw(unsigned algorithm, unsigned muted);
+ static __attribute__((noinline, cold, minsize)) void fm_draw(const uint8_t patch[156], const struct groove_fm_controls *controls)
+ {
+     if (paint_rendering && (paint_top >= 192 || paint_top + PAINT_ROWS <= 32)) return;
+@@ -758,8 +758,7 @@ static __attribute__((noinline, cold, minsize)) void fm_draw(const uint8_t patch
+             text(8, 146, patch[141] ? "KEY SYNC ON" : "KEY SYNC OFF", 1, TEXT, BACK);
+             text(124, 146, "PM SENS", 1, DIM, BACK);
+             number(178, 146, patch[143], 1, 1, TEXT, BACK);
+-        } else
+-            algorithm_draw(patch[134], controls->operators);
++        } /* The Verbalizer build has no room for the algorithm diagram. */
+     }
+     uint32_t sig = patch[134] | ((uint32_t)patch[135] << 5) | ((uint32_t)controls->mono << 8);
+     sig = signature(sig, patch + 145, 10);
+@@ -1352,6 +1351,38 @@ static __attribute__((noinline, cold, minsize)) void boot_draw(void)
+         paint_fill(58 + 16 * i, 166 - height[i] / 2, 12, height[i],
+                    i < boot_phase ? colors[i] : PANEL);
+ }
++/* The Verbalizer's page: SELECT turns its pages, ALGORITHM and PRESETS have
++ * the two large fields and KNOB 1-4 the four at the foot, as on other pages. */
++static __attribute__((noinline, cold, minsize)) void verbalizer_draw(void)
++{
++    static const char *const encoder[2] = {"ALGORITHM", "PRESETS"};
++    char value[12];
++    if (cache->title_cache != vb_page) {
++        cache->title_cache = vb_page;
++        paint_fill(0, 0, 240, 29, BACK);
++        paint_fill(0, 30, 240, 164, BACK);
++        text(8, 8, "VERBALIZER", 2, ACCENT, BACK);
++        number(198, 8, (int)vb_page + 1, 1, 2, TEXT, BACK);
++        text(210, 15, "/7", 1, DIM, BACK);
++        text(8, 40, fm1_vb_page_name(vb_page), 3, TEXT, BACK);
++        text(6, 231, "SELECT PAGE  SCL OR HOME BACK", 1, DIM, BACK);
++        memset(cache->row_cache, 0xff, sizeof cache->row_cache);
++    }
++    for (unsigned i = 0; i < FM1_VB_SLOTS; ++i) {
++        const char *label = fm1_vb_label(vb_page, i);
++        fm1_vb_value(vb_page, i, value);
++        if (i >= 1 && i <= 4) { knob(i - 1, label ? label : "", value, colors[i]); continue; }
++        if (!label) continue;
++        unsigned row = i ? 1 : 0, y = 76 + row * 58;
++        uint32_t sig = signature(i, value, (unsigned)strlen(value));
++        if (cache->row_cache[row] == sig) continue;
++        cache->row_cache[row] = sig;
++        paint_fill(8, y, 224, 50, PANEL);
++        text(14, y + 6, encoder[row], 1, DIM, PANEL);
++        text(14, y + 22, label, 2, TEXT, PANEL);
++        text(110, y + 16, value, 3, colors[row ? 5 : 0], PANEL);
++    }
++}
+ static void draw_page_body(const struct fm1_ble_status *ble)
+ {
+     unsigned visible = boot_active ? STARTUP : glo_down && glo_used ? MIX : page;
+@@ -1371,6 +1402,7 @@ static void draw_page_body(const struct fm1_ble_status *ble)
+     if (visible == STARTUP) { boot_draw(); return; }
+     const struct groove_view *views = frame_views, *v = &views[track];
+     if (!paint_rendering) leds(v, visible);
++    if (visible == VERBALIZER) { verbalizer_draw(); return; }
+     if (visible == PRESET_BROWSER) {
+         preset_draw();
+         return;
+@@ -1982,15 +2014,8 @@ static int apply_controls(const struct fm1_controls *controls, uint32_t now,
+             if (page != EFFECTS) effects_page = 0;
+             open_subpage(EFFECTS);
+         } else if (pressed & BUTTON(SCL)) {
+-            if (groove_source_type(track) == GROOVE_DX7) {
+-                op = operator_selected[track] < 6 ? operator_selected[track] : 0;
+-                operator_selected[track] = (uint8_t)op;
+-                operator_page[track][op] = (uint8_t)(page == FM_EDIT && fm_group == 4 ? 5 : 4);
+-                fm_group = operator_page[track][op]; page = FM_EDIT;
+-            } else {
+-                advanced_edit = 1; page = TONE_EDIT;
+-                tone_pages[track][tone_slot()] = groove_source_type(track) == GROOVE_303 ? 1 : 0;
+-            }
++            /* SCL opens and closes the Verbalizer's page. */
++            page = page == VERBALIZER ? music_page : VERBALIZER;
+         } else if (pressed & BUTTON(EDIT)) {
+             unsigned edit = groove_source_type(track) == GROOVE_DX7 ? FM_QUICK : TONE_EDIT;
+             edit_down = 1; edit_long = 0; edit_ms = now;
+@@ -2658,6 +2683,16 @@ void groove_screen_control(void)
+         }
+     }
+     read_encoders(&controls, now, boundary);
++    if (page == VERBALIZER) {
++        /* Every encoder belongs to the Verbalizer here; the keys still play. */
++        if (controls.encoders[0]) {
++            vb_page = (unsigned)clamp((int)vb_page + (controls.encoders[0] > 0 ? 1 : -1), 0, FM1_VB_PAGES - 1);
++            fm1_vb_page_open(vb_page);
++        }
++        for (unsigned i = 1; i < 7; ++i)
++            fm1_vb_turn(vb_page, i - 1, fm_encoder_delta(i, controls.encoders[i]));
++        memset(controls.encoders, 0, sizeof controls.encoders);
++    }
+     if (!apply_controls(&controls, now, &ble))
+         return;
+     /* Input changes do not wait for the animation timer. LCD work is bounded
+@@ -2893,82 +2928,3 @@ void groove_screen_snapshot(uint8_t state[8])
+     state[7] = (uint8_t)(octave + 24);
+ }
+ #endif
+-
+-/* FM1 algorithm layout drawn with bounded RGB565 primitives. */
+-static const uint8_t algorithms[32][12] = {
+-    {0x20, 0x00, 0x21, 0x00, 0x30, 0x00, 0x31, 0x00, 0x32, 0x00, 0x33, 0x01}, /* 1 */
+-    {0x20, 0x00, 0x21, 0x01, 0x30, 0x00, 0x31, 0x00, 0x32, 0x00, 0x33, 0x00}, /* 2 */
+-    {0x20, 0x00, 0x21, 0x00, 0x22, 0x00, 0x30, 0x00, 0x31, 0x00, 0x32, 0x01}, /* 3 */
+-    {0x20, 0x00, 0x21, 0x00, 0x22, 0x00, 0x30, 0x00, 0x31, 0x00, 0x32, 0x03}, /* 4 */
+-    {0x10, 0x00, 0x11, 0x00, 0x20, 0x00, 0x21, 0x00, 0x30, 0x00, 0x31, 0x01}, /* 5 */
+-    {0x10, 0x00, 0x11, 0x00, 0x20, 0x00, 0x21, 0x00, 0x30, 0x00, 0x31, 0x02}, /* 6 */
+-    {0x20, 0x00, 0x21, 0x00, 0x30, 0x00, 0x31, 0x00, 0x41, 0x10, 0x42, 0x01}, /* 7 */
+-    {0x20, 0x00, 0x21, 0x00, 0x30, 0x00, 0x31, 0x01, 0x41, 0x10, 0x42, 0x00}, /* 8 */
+-    {0x20, 0x00, 0x21, 0x01, 0x30, 0x00, 0x31, 0x00, 0x41, 0x10, 0x42, 0x00}, /* 9 */
+-    {0x20, 0x00, 0x21, 0x00, 0x22, 0x01, 0x30, 0x00, 0x31, 0x00, 0x41, 0x10}, /* 10 */
+-    {0x20, 0x00, 0x21, 0x00, 0x22, 0x00, 0x30, 0x00, 0x31, 0x00, 0x41, 0x11}, /* 11 */
+-    {0x10, 0x00, 0x11, 0x01, 0x30, 0x00, 0x21, 0x20, 0x31, 0x00, 0x41, 0x10}, /* 12 */
+-    {0x10, 0x00, 0x11, 0x00, 0x30, 0x00, 0x21, 0x20, 0x31, 0x00, 0x41, 0x11}, /* 13 */
+-    {0x20, 0x00, 0x21, 0x00, 0x30, 0x00, 0x31, 0x00, 0x32, 0x00, 0x42, 0x11}, /* 14 */
+-    {0x20, 0x00, 0x21, 0x01, 0x30, 0x00, 0x31, 0x00, 0x32, 0x00, 0x42, 0x10}, /* 15 */
+-    {0x20, 0x00, 0x11, 0x20, 0x21, 0x00, 0x22, 0x00, 0x31, 0x10, 0x32, 0x01}, /* 16 */
+-    {0x20, 0x00, 0x11, 0x21, 0x21, 0x00, 0x22, 0x00, 0x31, 0x10, 0x32, 0x00}, /* 17 */
+-    {0x20, 0x00, 0x11, 0x20, 0x21, 0x01, 0x31, 0x10, 0x32, 0x00, 0x33, 0x00}, /* 18 */
+-    {0x10, 0x00, 0x11, 0x00, 0x12, 0x00, 0x20, 0x00, 0x30, 0x00, 0x21, 0x31}, /* 19 */
+-    {0x10, 0x00, 0x20, 0x00, 0x11, 0x31, 0x30, 0x00, 0x31, 0x00, 0x41, 0x10}, /* 20 */
+-    {0x10, 0x00, 0x20, 0x00, 0x11, 0x31, 0x30, 0x00, 0x40, 0x00, 0x31, 0x30}, /* 21 */
+-    {0x10, 0x00, 0x11, 0x00, 0x20, 0x00, 0x30, 0x00, 0x40, 0x00, 0x21, 0x41}, /* 22 */
+-    {0x10, 0x00, 0x20, 0x00, 0x21, 0x00, 0x30, 0x00, 0x40, 0x00, 0x31, 0x31}, /* 23 */
+-    {0x10, 0x00, 0x20, 0x00, 0x30, 0x00, 0x40, 0x00, 0x50, 0x00, 0x31, 0x41}, /* 24 */
+-    {0x10, 0x00, 0x20, 0x00, 0x30, 0x00, 0x40, 0x00, 0x50, 0x00, 0x41, 0x31}, /* 25 */
+-    {0x10, 0x00, 0x20, 0x00, 0x21, 0x00, 0x30, 0x00, 0x31, 0x00, 0x41, 0x11}, /* 26 */
+-    {0x10, 0x00, 0x20, 0x00, 0x21, 0x01, 0x30, 0x00, 0x31, 0x00, 0x41, 0x10}, /* 27 */
+-    {0x20, 0x00, 0x21, 0x00, 0x30, 0x00, 0x31, 0x00, 0x32, 0x01, 0x40, 0x10}, /* 28 */
+-    {0x10, 0x00, 0x20, 0x00, 0x30, 0x00, 0x31, 0x00, 0x40, 0x00, 0x41, 0x01}, /* 29 */
+-    {0x10, 0x00, 0x20, 0x00, 0x30, 0x00, 0x31, 0x00, 0x32, 0x01, 0x40, 0x00}, /* 30 */
+-    {0x10, 0x00, 0x20, 0x00, 0x30, 0x00, 0x40, 0x00, 0x50, 0x00, 0x51, 0x01}, /* 31 */
+-    {0x00, 0x00, 0x10, 0x00, 0x20, 0x00, 0x30, 0x00, 0x40, 0x00, 0x50, 0x01}, /* 32 */
+-};
+-static void algorithm_draw(unsigned algorithm, unsigned muted)
+-{
+-    const uint8_t *layout = algorithms[algorithm & 31U];
+-    unsigned left = 239, right = 0;
+-    /* Draw wires first so every destination terminates behind an operator. */
+-    for (unsigned i = 0; i < 6; ++i) {
+-        unsigned column = layout[i * 2] >> 4, row = layout[i * 2] & 15;
+-        int x = 19 + (int)column * 36, y = 151 - (int)row * 15;
+-        unsigned branch = layout[i * 2 + 1] >> 4, feedback = layout[i * 2 + 1] & 15;
+-        int bottom = row ? y + 15 : 169;
+-        if (!row) {
+-            if ((unsigned)x < left)
+-                left = (unsigned)x;
+-            if ((unsigned)x > right)
+-                right = (unsigned)x;
+-        }
+-        if (branch == 0)
+-            line(x, y + 12, x, bottom, DIM);
+-        else {
+-            line(x, y + 12, x, y + 15, DIM);
+-            int first = branch == 1 ? x - 36 : branch == 2 ? x + 36 : x;
+-            int last = branch == 4 ? x + 72 : branch >= 2 ? x + 36 : first;
+-            line(first < x ? first : x, y + 15, last > x ? last : x, y + 15, DIM);
+-            for (int dest = first; dest <= last; dest += 36)
+-                line(dest, y + 15, dest, bottom, DIM);
+-        }
+-        if (feedback) {
+-            int end_y = y + (int)(feedback - 1) * 15 + 12;
+-            line(x, end_y, x + 17, end_y, AMBER);
+-            line(x + 17, end_y, x + 17, y - 4, AMBER);
+-            line(x + 17, y - 4, x, y - 4, AMBER);
+-            line(x, y - 4, x, y, AMBER);
+-        }
+-    }
+-    line((int)left, 169, (int)right, 169, DIM);
+-    text(104, 172, "OUT", 1, DIM, BACK);
+-    for (unsigned i = 0; i < 6; ++i) {
+-        unsigned x = 8 + (layout[i * 2] >> 4) * 36, y = 151 - (layout[i * 2] & 15) * 15;
+-        uint16_t bg = muted & (1U << i) ? PANEL : i == op ? colors[track] : DIM;
+-        paint_fill(x, y, 22, 12, bg);
+-        number(x + 8, y + 3, i + 1, 1, 1, muted & (1U << i) ? DIM : BACK, bg);
+-    }
+-}
 diff --git a/web/engine/Simulator.c b/web/engine/Simulator.c
 index da571f2..82cc15d 100644
 --- a/web/engine/Simulator.c

@@ -9,7 +9,7 @@ It changes only the checkout's `app` folder:
      into app/verbalizer/, where the SDK's build compiles every .c file;
   2. applies firmware/fm1_open.patch, which hooks the audio interrupt and the
      MIDI router and makes the factory DX7 bank decoder stop early;
-  3. cuts the packed factory DX7 bank down to its first 16 voices, because the
+  3. cuts the packed factory DX7 bank down to its first 6 voices, because the
      program image has no room for the Verbalizer otherwise.
 
 Running it again refreshes the engine copy and leaves the rest alone. Then
@@ -27,7 +27,7 @@ import subprocess
 import sys
 
 EXPECTED_COMMIT = "4c7496d"
-KEPT_VOICES = 16
+KEPT_VOICES = 6  # must match FACTORY_KEPT in fm1_open.patch
 MARKER = "Verbalizer build: cut down to the first"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -43,7 +43,7 @@ def copy_sources(sdk):
     target = os.path.join(sdk, "app", "verbalizer")
     os.makedirs(target, exist_ok=True)
     files = (glob.glob(os.path.join(REPO, "engine", "*.[ch]")) +
-             glob.glob(os.path.join(HERE, "fm1_verbalizer.[ch]")))
+             glob.glob(os.path.join(HERE, "fm1_verbalizer*.[ch]")))
     for path in files:
         shutil.copy2(path, target)
     print("copied %d source files to %s" % (len(files), target))
@@ -64,9 +64,13 @@ def apply_patch(sdk):
 def trim_factory_bank(sdk):
     path = os.path.join(sdk, "app", "fm_factory.inc")
     text = open(path, encoding="utf-8", newline="").read()
-    if MARKER in text:
+    if "%s %d voices" % (MARKER, KEPT_VOICES) in text:
         print("factory DX7 bank already trimmed")
         return
+    if MARKER in text:
+        # trimmed to a different size by an earlier version: start again
+        text = subprocess.run(["git", "-C", sdk, "show", EXPECTED_COMMIT + ":app/fm_factory.inc"],
+                              check=True, capture_output=True).stdout.decode("utf-8")
     start, end = text.index("{"), text.rindex("}")
     values = [int(v) for v in re.findall(r"\d+", text[start + 1:end])]
     # walk the packed stream until it has produced the voices we keep

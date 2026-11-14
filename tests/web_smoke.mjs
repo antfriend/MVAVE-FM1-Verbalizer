@@ -103,5 +103,59 @@ for (let i = 0; i < 500; i++) midi(0xb0 | CHANNEL, 102 + (i % 16), i & 127);
 level = peak(0.5);
 check('survives a flood of controllers', Number.isFinite(level), level.toFixed(4));
 
+// The Verbalizer's page. Button 3 is SCL, which opens it; encoder 0 is SELECT,
+// which turns its pages; encoder 1 is ALGORITHM, the first control of a page.
+const SCL = 3, SELECT = 0, ALGORITHM = 1, VERBALIZER_PAGE = 19;
+const shownPage = () => new Uint8Array(c.memory.buffer, c.sim_state(), 8)[1];
+const press = (button) => { c.sim_control(0, button, 1); c.sim_control(0, button, 0); };
+const turn = (encoder, detents) => {
+  for (let i = 0; i < Math.abs(detents); i++) {
+    c.sim_control(2, encoder, Math.sign(detents));
+    c.sim_render();
+  }
+};
+// How many pixels of the 240 x 240 screen are not background.
+const lit = () => new Uint16Array(c.memory.buffer, c.sim_pixels(), 57600).reduce((n, p) => n + (p !== 0), 0);
+
+for (const controller of [104, 109, 115]) midi(0xb0 | CHANNEL, controller, 90);
+midi(0xb0 | CHANNEL, 118, 64);
+midi(0xb0 | CHANNEL, 120, 0);
+peak(0.3);
+
+press(SCL);
+peak(0.2);
+check('SCL opens the Verbalizer page', shownPage() === VERBALIZER_PAGE, `page ${shownPage()}`);
+check('and it draws something', lit() > 2000, `${lit()} pixels`);
+
+// From Trigger, three pages on is Formant 1, which puts the engine in
+// Formants mode with its own knobs: a vowel, voiced.
+turn(SELECT, 3);
+midi(0x90 | CHANNEL, 60, 127);
+level = peak(0.5);
+check('Formant pages play the Formants patch', level > AUDIBLE, level.toFixed(4));
+
+// ALGORITHM on Formant 1 is the voice amplitude; all the way down is silence.
+turn(ALGORITHM, -40);
+peak(0.3);
+level = peak(0.2);
+check('turning VOICE down silences it', level < SILENT, level.toExponential(2));
+turn(ALGORITHM, 20);
+level = peak(0.4);
+check('and turning it up brings it back', level > AUDIBLE, level.toFixed(4));
+midi(0x80 | CHANNEL, 60, 0);
+peak(0.5);
+
+// Back on the Trigger page the Trigger / Sustain / Release patch is intact.
+turn(SELECT, -3);
+midi(0x90 | CHANNEL, 60, 127);
+level = peak(0.6);
+check('the Trigger / Sustain / Release patch survives the visit', level > AUDIBLE, level.toFixed(4));
+midi(0x80 | CHANNEL, 60, 0);
+peak(1.0);
+
+press(SCL);
+peak(0.1);
+check('SCL closes the page again', shownPage() !== VERBALIZER_PAGE, `page ${shownPage()}`);
+
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
 process.exit(failures ? 1 : 0);

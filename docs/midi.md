@@ -18,6 +18,8 @@
 
 Anything else is ignored and `vb_midi()` returns `false`.
 
+In the FM-1 firmware each mode keeps its own set of the sixteen knobs. CC 118 swaps in the new mode's set, and CC 102–117 change the current mode's. The engine on its own has one set, shared by all modes.
+
 What each knob does in each mode is in [controls.md](controls.md). In Formants mode the knobs are the tract's parameters, so CC 102–117 reach all thirteen of them. Three of those (`ga`, `vp`, `vr`) are divided by 3 on the way, as they were on the original, so they stop at a third of the tract's full range, and pitch moves in whole keys.
 
 ## Velocity

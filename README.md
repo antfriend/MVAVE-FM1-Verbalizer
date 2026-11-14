@@ -47,17 +47,21 @@ The original's three-position mode switch becomes three modes:
 
 The original has about sixteen dedicated knobs. The FM-1 has seven endless encoders and one analogue knob, plus 27 note keys (F3 to G5), 14 buttons and a 240 × 240 screen, so parameters are paged across the encoders.
 
-| Page | Enc 1 | Enc 2 | Enc 3 | Enc 4 | Enc 5 | Enc 6 | Enc 7 |
-|---|---|---|---|---|---|---|---|
-| Trigger | phoneme | duration | volume | vibrato depth | vibrato rate | — | — |
-| Sustain | phoneme | duration | volume | vibrato depth | vibrato rate | — | — |
-| Release | phoneme | duration | volume | vibrato depth | vibrato rate | — | echo |
-| Formants A | `f1` | `f2` | `f3` | `f4` | `na` | `nf` | glide time |
-| Formants B | `ga` | `aa` | `fa` | `ff` | `vp` | `vr` | pitch offset |
+The SELECT encoder turns the pages and the other six encoders edit the page. The page also sets the mode.
 
-Each phase of a keystroke has a page to itself, with the same five controls in the same places, and the fourteen Formants controls fill two pages exactly. Every control the engine has is on a page. In Formants mode the pitch `gp` comes from the key plus the pitch offset. Words mode uses the Trigger page's duration. The echo control does nothing until the spatializer is ported. The analogue knob and the buttons are not assigned yet. [docs/controls.md](docs/controls.md) says what each control does.
+| Page | ALGORITHM | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 | PRESETS |
+|---|---|---|---|---|---|---|
+| Words | | length | | | | |
+| Trigger | phoneme | time | volume | vibrato depth | vibrato rate | |
+| Sustain | phoneme | time | volume | vibrato depth | vibrato rate | |
+| Release | phoneme | time | volume | vibrato depth | vibrato rate | |
+| Formant 1 | `ga` | `f1` | `f2` | `f3` | `f4` | glide time |
+| Formant 2 | `aa` | `na` | `nf` | `fa` | `ff` | pitch offset |
+| Formant 3 | | `vp` | `vr` | | | |
 
-This layout is a draft and will change once it is playable.
+Each phase of a keystroke has a page to itself, with the same five controls in the same places. Every control the engine has is on a page except the echo amount, which does nothing until the spatializer is ported. In Formants mode the pitch `gp` comes from the key plus the pitch offset. The analogue knob stays the master volume. [docs/controls.md](docs/controls.md) says what each control does.
+
+This is built: the test firmware has it on the SCL button, and it can be played in a browser ([firmware/README.md](firmware/README.md)). It has not been tried on a device and will change once it has.
 
 ### New on the FM-1 (*planned*)
 
@@ -71,7 +75,7 @@ This layout is a draft and will change once it is playable.
 1. **`VocalTract` in C.** *Done.* The Propeller assembly is translated to portable integer C. Its output matches the original assembly sample for sample, checked by running that assembly in an emulator. Comparing against recordings of the original hardware is still to do.
 2. **Sample rate.** *Done.* Everything in the tract depends on its 20 kHz rate, so the engine keeps running at 20 kHz and stays bit-exact. A resampler converts its output to the FM-1's fixed 44.1 kHz and delivers it in the FM-1's block format (128 stereo frames, 24-bit).
 3. **Voice logic.** *Done.* `Voice.spin` and the key handling are ported: the phonemes, the three modes and four-voice allocation. The engine takes MIDI messages (notes with velocity, pitch bend, sustain pedal, controllers for every knob). The desktop build plays it from a text score; it does not read MIDI files or ports.
-4. **FM-1 integration.** *Started.* A first test firmware builds: the engine inside M-VAVE's official firmware, playing beside the stock instrument from the keys and MIDI, with one fixed patch and no screens of its own. It has not been run on a device. See [firmware/README.md](firmware/README.md); [docs/fm1-platform.md](docs/fm1-platform.md) records what the SDK requires. Still to do: the paged UI, patch storage, and making room for them, since the FM-1's program flash is full.
+4. **FM-1 integration.** *Started.* A first test firmware builds: the engine inside M-VAVE's official firmware, playing beside the stock instrument from the keys and MIDI, with a page of its own for the paged controls. It has not been run on a device. See [firmware/README.md](firmware/README.md); [docs/fm1-platform.md](docs/fm1-platform.md) records what the SDK requires. Still to do: patch storage, and making room for it by replacing stock screens, since the FM-1's program flash is full.
 5. **Hardware testing.** *Not started.* CPU load with four voices, stereo output for the spatializer, and battery behaviour.
 
 The stereo spatializer, which also gave the original its echo, is not ported. The engine mixes its voices to mono for now.
