@@ -2,6 +2,7 @@
 /* The Verbalizer inside M-VAVE's open FM-1 firmware. See fm1_verbalizer.h. */
 #include "fm1_verbalizer.h"
 
+#include "fm1_device.h"
 #include "resampler.h"
 
 /* What keeps the audio interrupt out while a task writes the queue. The
@@ -85,18 +86,13 @@ int fm1_verbalizer_set_knob(unsigned knob, unsigned value)
     return result;
 }
 
-int fm1_verbalizer_set_mode(unsigned next)
+/* Give the engine a mode and that mode's sixteen knobs: all or nothing. */
+static int enter(unsigned next)
 {
-    uint32_t flags;
+    uint32_t flags = queue_lock();
     unsigned i;
     int result = -1;
 
-    if (next > VB_MODE_FORMANTS)
-        return -1;
-    if (next == mode)
-        return 0;
-    flags = queue_lock();
-    /* all or nothing: the mode and its sixteen knobs */
     if (QUEUE_SIZE - (queue_in - queue_out) > VB_NUM_POTS) {
         (void)put(SET_MODE, next, 0);
         for (i = 0; i < VB_NUM_POTS; i++)
@@ -108,6 +104,77 @@ int fm1_verbalizer_set_mode(unsigned next)
     }
     queue_unlock(flags);
     return result;
+}
+
+int fm1_verbalizer_set_mode(unsigned next)
+{
+    if (next > VB_MODE_FORMANTS)
+        return -1;
+    return next == mode ? 0 : enter(next);
+}
+
+/* The stored record. Storage runs rarely and the program flash is nearly
+ * full, so on the device it is compiled for size. */
+#ifdef __GCC_PI32V2__
+#define STORE_CODE __attribute__((minsize))
+#else
+#define STORE_CODE
+#endif
+
+#define STORE_MAGIC 0x31424256U /* "VBB1" */
+
+struct stored {
+    uint32_t magic;
+    uint32_t mode;
+    uint8_t patch[3][VB_NUM_POTS];
+    uint32_t check;
+};
+
+STORE_CODE static uint32_t check_of(const struct stored *record)
+{
+    const uint8_t *bytes = (const uint8_t *)record;
+    uint32_t check = STORE_MAGIC;
+    unsigned i;
+
+    for (i = 0; i < offsetof(struct stored, check); i++)
+        check = check * 31U + bytes[i];
+    return check;
+}
+
+STORE_CODE int fm1_verbalizer_load(uint32_t offset)
+{
+    struct stored record;
+    unsigned i;
+
+    if (fm1_flash_read(offset, &record, sizeof record) || record.magic != STORE_MAGIC ||
+        record.mode > VB_MODE_FORMANTS || record.check != check_of(&record))
+        return -1;
+    for (i = 0; i < sizeof patch; i++)
+        patch[0][i] = record.patch[0][i];
+    return enter(record.mode);
+}
+
+STORE_CODE int fm1_verbalizer_save(uint32_t offset)
+{
+    const uint8_t *sector = fm1_flash_map(offset, FM1_FLASH_SECTOR_BYTES);
+    struct stored record;
+    unsigned i;
+
+    if (!sector || fm1_flash_read(offset, &record, sizeof record))
+        return -1;
+    /* Only ever erase a blank sector or an earlier record. */
+    if (record.magic != STORE_MAGIC)
+        for (i = 0; i < FM1_FLASH_SECTOR_BYTES; i++)
+            if (sector[i] != 0xff)
+                return FM1_VERBALIZER_SECTOR_IN_USE;
+    record.magic = STORE_MAGIC;
+    record.mode = mode;
+    for (i = 0; i < sizeof patch; i++)
+        record.patch[0][i] = patch[0][i];
+    record.check = check_of(&record);
+    if (fm1_flash_erase(offset) || fm1_flash_write(offset, &record, sizeof record))
+        return -1;
+    return 0;
 }
 
 int fm1_verbalizer_midi(const uint8_t *message, size_t bytes)

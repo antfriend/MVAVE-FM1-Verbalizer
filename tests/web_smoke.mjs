@@ -16,9 +16,20 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const path = process.argv[2] ?? join(here, '..', '..', 'fm1_open', 'build', 'web', 'simulator.wasm');
-const c = new WebAssembly.Instance(new WebAssembly.Module(readFileSync(path)), {}).exports;
-c._initialize();
-c.sim_boot(1);
+const module = new WebAssembly.Module(readFileSync(path));
+const FLASH_BYTES = 536576;
+let c;
+
+// Starts a fresh device. Without `flash` its storage is as from the factory;
+// with it, the device starts up on that storage, as after a power cycle.
+function start(flash) {
+  c = new WebAssembly.Instance(module, {}).exports;
+  c._initialize();
+  if (flash) new Uint8Array(c.memory.buffer, c.sim_flash(), FLASH_BYTES).set(flash);
+  c.sim_boot(flash ? 0 : 1);
+}
+const flashCopy = () => new Uint8Array(c.memory.buffer, c.sim_flash(), FLASH_BYTES).slice();
+start();
 
 const frames = c.sim_block_frames();
 const CHANNEL = 15;
@@ -156,6 +167,60 @@ peak(1.0);
 press(SCL);
 peak(0.1);
 check('SCL closes the page again', shownPage() !== VERBALIZER_PAGE, `page ${shownPage()}`);
+
+// Keeping the knobs. On the Verbalizer page SAVE (button 9) writes them to
+// the sector before the DX7 banks instead of opening the project page.
+const SAVE = 9, SECTOR = FLASH_BYTES - 6 * 4096;
+const sectorWord = (flash) => new DataView(flash.buffer).getUint32(SECTOR, true);
+press(SCL);
+turn(SELECT, 3);       // Formant 1: Formants mode
+turn(ALGORITHM, -40);  // VOICE down to nothing
+peak(0.2);
+check('the save sector starts blank', sectorWord(flashCopy()) === 0xffffffff, sectorWord(flashCopy()).toString(16));
+press(SAVE);
+peak(0.2);
+check('SAVE on the Verbalizer page stays on it', shownPage() === VERBALIZER_PAGE, `page ${shownPage()}`);
+const saved = flashCopy();
+check('and writes a record', sectorWord(saved) === 0x31424256, sectorWord(saved).toString(16));
+
+// A power cycle: the device comes back in Formants mode with VOICE at
+// nothing, so a note is silent. With the built-in sounds it would not be.
+start(saved);
+peak(0.3);
+midi(0x90 | CHANNEL, 60, 127);
+level = peak(0.5);
+check('after a restart the saved knobs are back', level < SILENT, level.toExponential(2));
+midi(0x80 | CHANNEL, 60, 0);
+press(SCL);
+peak(0.2);
+turn(ALGORITHM, 20);
+midi(0x90 | CHANNEL, 60, 127);
+level = peak(0.5);
+check('and the page opens on the saved mode', level > AUDIBLE, level.toFixed(4));
+midi(0x80 | CHANNEL, 60, 0);
+peak(0.5);
+
+// A damaged record is ignored: the built-in sounds play.
+const damaged = saved.slice();
+damaged[SECTOR + 20] ^= 1;
+start(damaged);
+peak(0.3);
+midi(0x90 | CHANNEL, 60, 127);
+level = peak(0.5);
+check('a damaged record is ignored', level > AUDIBLE, level.toFixed(4));
+midi(0x80 | CHANNEL, 60, 0);
+
+// Something else in the sector (a sample bank from before this firmware
+// reaching that far) is never overwritten.
+const foreign = saved.slice();
+foreign.fill(0x5a, SECTOR, SECTOR + 4096);
+start(foreign);
+peak(0.3);
+press(SCL);
+press(SAVE);
+peak(0.2);
+check("someone else's data in the sector is left alone",
+  flashCopy().subarray(SECTOR, SECTOR + 4096).every((byte) => byte === 0x5a), 'sector compared');
 
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
 process.exit(failures ? 1 : 0);

@@ -28,7 +28,7 @@ index 26327aa..6160314 100644
      uint32_t flags = fm1_audio_irq_save();
      if (fm1_audio_half_owned(half) &&
 diff --git a/app/fm_factory.c b/app/fm_factory.c
-index c6f772d..2cb155f 100644
+index c6f772d..0d0951d 100644
 --- a/app/fm_factory.c
 +++ b/app/fm_factory.c
 @@ -4,19 +4,22 @@
@@ -38,7 +38,7 @@ index c6f772d..2cb155f 100644
 -static uint8_t factory_raw[FM1_FM_PROGRAMS*128];
 +/* Verbalizer build: only the first FACTORY_KEPT voices are stored, to make
 + * room in the program image; the other program numbers repeat them. */
-+enum { FACTORY_KEPT = 6 };
++enum { FACTORY_KEPT = 4 };
 +static uint8_t factory_raw[FACTORY_KEPT*128];
  static unsigned factory_ready;
  static FM1_DSP_CODE void factory_init(void)
@@ -67,6 +67,25 @@ index c6f772d..2cb155f 100644
  }
  FM1_DSP_CODE void groove_fm_factory(uint8_t p[156], unsigned program)
  {
+diff --git a/app/instrument.h b/app/instrument.h
+index 9ff80f9..81d3821 100644
+--- a/app/instrument.h
++++ b/app/instrument.h
+@@ -329,9 +329,13 @@ enum { GROOVE_SAMPLE_OFFSET = 69632, GROOVE_SAMPLE_BYTES = 466944,
+ /* Five final sectors hold the four DX7 banks and tuning/session preferences.
+  * New sample transfers stop before them. Larger legacy banks stay readable;
+  * writes to overlapping extension storage are rejected before erasing Flash. */
++/* Verbalizer build: the sector before the DX7 banks holds the Verbalizer's
++ * knobs, so new sample transfers stop one sector sooner. A bank already
++ * reaching into it stays readable, and the Verbalizer then declines to save. */
+ enum { GROOVE_TUNING_OFFSET = GROOVE_FLASH_BYTES - 4096,
+        GROOVE_LIBRARY_OFFSET = GROOVE_TUNING_OFFSET - 4 * 4096,
+-       GROOVE_SAMPLE_LIMIT = GROOVE_LIBRARY_OFFSET - GROOVE_SAMPLE_OFFSET };
++       GROOVE_VERBALIZER_OFFSET = GROOVE_LIBRARY_OFFSET - 4096,
++       GROOVE_SAMPLE_LIMIT = GROOVE_VERBALIZER_OFFSET - GROOVE_SAMPLE_OFFSET };
+ /* Finish any committed shared journal before starting a new transaction. */
+ int groove_storage_prepare(void);
+ void groove_samples_init(void);
 diff --git a/app/midi_router.c b/app/midi_router.c
 index 5a375f4..a770ee4 100644
 --- a/app/midi_router.c
@@ -96,18 +115,19 @@ index 5a375f4..a770ee4 100644
      if (((config.thru >> 3) & 3U) == source && m[0] != 0xff && (m[0] < 0xf0 || clock)) {
          unsigned ports = config.thru & 7U & ~(1U << source) & fm1_midi_output_ports();
 diff --git a/app/screen.c b/app/screen.c
-index 811e5d1..19ee866 100644
+index 811e5d1..b44bf95 100644
 --- a/app/screen.c
 +++ b/app/screen.c
-@@ -3,6 +3,7 @@
+@@ -3,6 +3,8 @@
  #include "fm_patch.h"
  #include "version.h"
  #include "fm1_engine_control.h"
++#include "verbalizer/fm1_verbalizer.h"
 +#include "verbalizer/fm1_verbalizer_ui.h"
  #include <string.h>
  enum {
      BACK = 0x0000,
-@@ -123,7 +124,7 @@ static void text(unsigned x, unsigned y, const char *s, unsigned scale, uint16_t
+@@ -123,7 +125,7 @@ static void text(unsigned x, unsigned y, const char *s, unsigned scale, uint16_t
  }
  /* Eight tracks stay visible on HOME. SEQ maps the sixteen white keys to one
   * quarter of the 64-step pattern. All drawing and edits run on app_control. */
@@ -116,16 +136,16 @@ index 811e5d1..19ee866 100644
  enum { OCT_DOWN, OCT_UP, FX, SCL, ENV, LFO, EDIT, GLO, HOME, SAVE, ARP, SEQ, PLAY, REC };
  #define BUTTON(b) (1U << (b))
  static const uint16_t colors[8] = {0x3c9f, 0x07bf, 0x4eae, 0x06d4, 0xac9f, 0xed18, 0xff06, 0xfba5};
-@@ -158,7 +159,7 @@ static uint32_t midi_seen[8], midi_until[8];
+@@ -158,7 +160,7 @@ static uint32_t midi_seen[8], midi_until[8];
  static uint8_t midi_active[8];
  static unsigned track, cursor, selected_note = 60, drum, writing, page, fm_group, op;
  static unsigned music_page, subpage_return, project_return, rec_before_press, effects_page;
 -static unsigned seq_page, arp_page;
-+static unsigned seq_page, arp_page, vb_page = 1;
++static unsigned seq_page, arp_page, vb_page = 1, vb_loaded, vb_save_down;
  static unsigned boot_active, boot_phase;
  static uint32_t boot_started;
  static const char *const seq_pages[] = {"1/8 BASIC", "2/8 STEP DETAILS", "3/8 RHYTHM/REC", "4/8 LOCKS", "5/8 SYNC / LOOP", "6/8 MIDI TRACK", "7/8 MIDI ROUTING", "8/8 TRACK ROLE"};
-@@ -676,7 +677,6 @@ static unsigned fm_parameter(unsigned col)
+@@ -676,7 +678,6 @@ static unsigned fm_parameter(unsigned col)
          return 255;
      return p->parameter[col] + (p->per_operator ? (5 - op) * 21 : 0);
  }
@@ -133,7 +153,7 @@ index 811e5d1..19ee866 100644
  static __attribute__((noinline, cold, minsize)) void fm_draw(const uint8_t patch[156], const struct groove_fm_controls *controls)
  {
      if (paint_rendering && (paint_top >= 192 || paint_top + PAINT_ROWS <= 32)) return;
-@@ -758,8 +758,7 @@ static __attribute__((noinline, cold, minsize)) void fm_draw(const uint8_t patch
+@@ -758,8 +759,7 @@ static __attribute__((noinline, cold, minsize)) void fm_draw(const uint8_t patch
              text(8, 146, patch[141] ? "KEY SYNC ON" : "KEY SYNC OFF", 1, TEXT, BACK);
              text(124, 146, "PM SENS", 1, DIM, BACK);
              number(178, 146, patch[143], 1, 1, TEXT, BACK);
@@ -143,14 +163,22 @@ index 811e5d1..19ee866 100644
      }
      uint32_t sig = patch[134] | ((uint32_t)patch[135] << 5) | ((uint32_t)controls->mono << 8);
      sig = signature(sig, patch + 145, 10);
-@@ -1352,6 +1351,38 @@ static __attribute__((noinline, cold, minsize)) void boot_draw(void)
-         paint_fill(58 + 16 * i, 166 - height[i] / 2, 12, height[i],
-                    i < boot_phase ? colors[i] : PANEL);
+@@ -1335,22 +1335,42 @@ static __attribute__((noinline)) void edit_page_draw(unsigned visible)
+         text(8, 231, "EDIT BACK  HOLD EDIT MORE", 1, DIM, BACK);
+     }
  }
+-static __attribute__((noinline, cold, minsize)) void boot_draw(void)
 +/* The Verbalizer's page: SELECT turns its pages, ALGORITHM and PRESETS have
 + * the two large fields and KNOB 1-4 the four at the foot, as on other pages. */
 +static __attribute__((noinline, cold, minsize)) void verbalizer_draw(void)
-+{
+ {
+-    if (cache->title_cache != 0) {
+-        cache->title_cache = 0;
+-        text(86, 48, "FM1", 4, TEXT, BACK);
+-        text(81, 98, "OFFICIAL OPEN", 1, ACCENT, BACK);
+-        text((240 - 12 * (sizeof FM1_RELEASE_VERSION - 1)) / 2, 120,
+-             FM1_RELEASE_VERSION, 2, TEXT, BACK);
+-        text(102, 208, "M-VAVE", 1, DIM, BACK);
 +    static const char *const encoder[2] = {"ALGORITHM", "PRESETS"};
 +    char value[12];
 +    if (cache->title_cache != vb_page) {
@@ -161,9 +189,14 @@ index 811e5d1..19ee866 100644
 +        number(198, 8, (int)vb_page + 1, 1, 2, TEXT, BACK);
 +        text(210, 15, "/7", 1, DIM, BACK);
 +        text(8, 40, fm1_vb_page_name(vb_page), 3, TEXT, BACK);
-+        text(6, 231, "SELECT PAGE  SCL OR HOME BACK", 1, DIM, BACK);
 +        memset(cache->row_cache, 0xff, sizeof cache->row_cache);
-+    }
+     }
+-    if (cache->middle_cache == boot_phase) return;
+-    cache->middle_cache = boot_phase;
+-    static const uint8_t height[8] = {8, 18, 30, 42, 42, 30, 18, 8};
+-    for (unsigned i = 0; i < 8; ++i)
+-        paint_fill(58 + 16 * i, 166 - height[i] / 2, 12, height[i],
+-                   i < boot_phase ? colors[i] : PANEL);
 +    for (unsigned i = 0; i < FM1_VB_SLOTS; ++i) {
 +        const char *label = fm1_vb_label(vb_page, i);
 +        fm1_vb_value(vb_page, i, value);
@@ -178,19 +211,38 @@ index 811e5d1..19ee866 100644
 +        text(14, y + 22, label, 2, TEXT, PANEL);
 +        text(110, y + 16, value, 3, colors[row ? 5 : 0], PANEL);
 +    }
-+}
++    const char *hint = notice ? notice : "SELECT PAGE  SAVE KEEP  SCL BACK";
++    uint32_t sig = signature(0, hint, (unsigned)strlen(hint));
++    if (cache->hint_cache == sig) return;
++    cache->hint_cache = sig;
++    paint_fill(6, 231, 228, 7, BACK);
++    text(6, 231, hint, 1, DIM, BACK);
+ }
  static void draw_page_body(const struct fm1_ble_status *ble)
  {
-     unsigned visible = boot_active ? STARTUP : glo_down && glo_used ? MIX : page;
-@@ -1371,6 +1402,7 @@ static void draw_page_body(const struct fm1_ble_status *ble)
-     if (visible == STARTUP) { boot_draw(); return; }
+@@ -1368,9 +1388,9 @@ static void draw_page_body(const struct fm1_ble_status *ble)
+         if (visible == PROJECT || visible == PRESET_BROWSER)
+             text(8, 8, visible == PROJECT ? "SAVE PROJECT" : "PRESETS", 2, ACCENT, BACK);
+     }
+-    if (visible == STARTUP) { boot_draw(); return; }
      const struct groove_view *views = frame_views, *v = &views[track];
      if (!paint_rendering) leds(v, visible);
 +    if (visible == VERBALIZER) { verbalizer_draw(); return; }
      if (visible == PRESET_BROWSER) {
          preset_draw();
          return;
-@@ -1982,15 +2014,8 @@ static int apply_controls(const struct fm1_controls *controls, uint32_t now,
+@@ -1804,8 +1824,8 @@ void groove_screen_init(void)
+     fm1_controls_init();
+     for (unsigned key = 0; key < 41; ++key) fm1_led_set(key, 0);
+     fm1_screen_init();
+-    boot_started = fm1_millis();
+-    boot_active = 1;
++    /* The Verbalizer build has no room for the start-up animation, and is
++     * not the official firmware that it announces. */
+     struct fm1_ble_status ble = {0};
+     fm1_ble_get_status(&ble);
+     draw(&ble);
+@@ -1982,15 +2002,8 @@ static int apply_controls(const struct fm1_controls *controls, uint32_t now,
              if (page != EFFECTS) effects_page = 0;
              open_subpage(EFFECTS);
          } else if (pressed & BUTTON(SCL)) {
@@ -208,11 +260,29 @@ index 811e5d1..19ee866 100644
          } else if (pressed & BUTTON(EDIT)) {
              unsigned edit = groove_source_type(track) == GROOVE_DX7 ? FM_QUICK : TONE_EDIT;
              edit_down = 1; edit_long = 0; edit_ms = now;
-@@ -2658,6 +2683,16 @@ void groove_screen_control(void)
+@@ -2658,6 +2671,34 @@ void groove_screen_control(void)
          }
      }
      read_encoders(&controls, now, boundary);
++    if (!vb_loaded) {
++        /* Here, not at start-up, because flash belongs to this task. */
++        vb_loaded = 1;
++        if (!fm1_verbalizer_load(GROOVE_VERBALIZER_OFFSET)) {
++            unsigned mode = fm1_verbalizer_mode();
++            vb_page = mode ? mode * 3 - 2 : 0;
++        }
++    }
 +    if (page == VERBALIZER) {
++        /* SAVE keeps the Verbalizer's knobs instead of opening the project page. */
++        unsigned save = controls.buttons & BUTTON(SAVE);
++        controls.buttons &= ~BUTTON(SAVE);
++        if (save && !vb_save_down) {
++            int result = fm1_verbalizer_save(GROOVE_VERBALIZER_OFFSET);
++            notice = !result ? "VERBALIZER SAVED"
++                   : result == FM1_VERBALIZER_SECTOR_IN_USE ? "NO ROOM - SAMPLE BANK IS FULL" : "SAVE FAILED";
++            notice_until = now + 2000U;
++        }
++        vb_save_down = save;
 +        /* Every encoder belongs to the Verbalizer here; the keys still play. */
 +        if (controls.encoders[0]) {
 +            vb_page = (unsigned)clamp((int)vb_page + (controls.encoders[0] > 0 ? 1 : -1), 0, FM1_VB_PAGES - 1);
@@ -225,7 +295,7 @@ index 811e5d1..19ee866 100644
      if (!apply_controls(&controls, now, &ble))
          return;
      /* Input changes do not wait for the animation timer. LCD work is bounded
-@@ -2893,82 +2928,3 @@ void groove_screen_snapshot(uint8_t state[8])
+@@ -2893,82 +2934,3 @@ void groove_screen_snapshot(uint8_t state[8])
      state[7] = (uint8_t)(octave + 24);
  }
  #endif

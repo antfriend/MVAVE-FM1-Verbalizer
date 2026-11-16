@@ -45,4 +45,25 @@ int fm1_verbalizer_set_mode(unsigned mode);
 unsigned fm1_verbalizer_knob(unsigned knob);                 /* 0..255 */
 int fm1_verbalizer_set_knob(unsigned knob, unsigned value);  /* 0..255 */
 
+/*
+ * Keeping the knobs across a restart. Control task only, as for all of the
+ * SDK's flash calls; a save silences the audio for a moment.
+ *
+ * `offset` is a whole sector of the user flash partition that is the
+ * Verbalizer's alone. It holds one record: the mode and all three sets of
+ * knobs. A save erases the sector and writes the record, so losing power in
+ * the middle of one loses the stored sounds, and the next start-up begins
+ * with the built-in ones.
+ *
+ * Load returns 0 and puts the record in force, or -1 if there is no good
+ * record, leaving everything as it was.
+ *
+ * Save returns 0, or FM1_VERBALIZER_SECTOR_IN_USE if the sector holds
+ * something that is neither blank nor one of these records, which is then
+ * left alone, or -1 if the flash could not be written.
+ */
+enum { FM1_VERBALIZER_SECTOR_IN_USE = -2 };
+int fm1_verbalizer_load(uint32_t offset);
+int fm1_verbalizer_save(uint32_t offset);
+
 #endif

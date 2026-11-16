@@ -4,7 +4,7 @@ A vocal-tract synthesizer firmware for the M-VAVE FM-1 pocket synth: a port of [
 
 Play phonemes, formants and word fragments from the FM-1's keys instead of FM patches.
 
-> **Status: the sound engine runs on a desktop, and a first test firmware builds but has never been run on an FM-1.** The vocal tract and the voice logic are ported to portable C and render WAV files on a PC. A test firmware with the engine inside M-VAVE's open firmware compiles and packages; do not flash it without a recovery method ready. The same build also runs in a browser through the SDK's simulator, where it can be played ([firmware/README.md](firmware/README.md)). Sections marked *planned* are not implemented.
+> **Status: the sound engine runs on a desktop, and a first test firmware builds but has never been run on an FM-1.** The vocal tract and the voice logic are ported to portable C and render WAV files on a PC. Two test firmwares compile and package: one with the engine inside M-VAVE's open firmware beside the stock instrument, and one where the Verbalizer is the whole instrument. Do not flash either without a recovery method ready. Both also run in a browser through the SDK's simulator, where they can be played ([firmware/README.md](firmware/README.md)). Sections marked *planned* are not implemented.
 
 > **Not affiliated with M-VAVE.** Custom firmware is installed at your own risk. See [Safety](#safety-and-recovery).
 
@@ -75,7 +75,7 @@ This is built: the test firmware has it on the SCL button, and it can be played 
 1. **`VocalTract` in C.** *Done.* The Propeller assembly is translated to portable integer C. Its output matches the original assembly sample for sample, checked by running that assembly in an emulator. Comparing against recordings of the original hardware is still to do.
 2. **Sample rate.** *Done.* Everything in the tract depends on its 20 kHz rate, so the engine keeps running at 20 kHz and stays bit-exact. A resampler converts its output to the FM-1's fixed 44.1 kHz and delivers it in the FM-1's block format (128 stereo frames, 24-bit).
 3. **Voice logic.** *Done.* `Voice.spin` and the key handling are ported: the phonemes, the three modes and four-voice allocation. The engine takes MIDI messages (notes with velocity, pitch bend, sustain pedal, controllers for every knob). The desktop build plays it from a text score; it does not read MIDI files or ports.
-4. **FM-1 integration.** *Started.* A first test firmware builds: the engine inside M-VAVE's official firmware, playing beside the stock instrument from the keys and MIDI, with a page of its own for the paged controls. It has not been run on a device. See [firmware/README.md](firmware/README.md); [docs/fm1-platform.md](docs/fm1-platform.md) records what the SDK requires. Still to do: patch storage, and making room for it by replacing stock screens, since the FM-1's program flash is full.
+4. **FM-1 integration.** *Started.* A first test firmware builds: the engine inside M-VAVE's official firmware, playing beside the stock instrument from the keys and MIDI, with a page of its own for the paged controls and a SAVE that keeps them across restarts. A second build removes the stock instrument and its screens, leaving the Verbalizer, the Bluetooth page and 64 KB of free program flash. Neither has been run on a device. See [firmware/README.md](firmware/README.md); [docs/fm1-platform.md](docs/fm1-platform.md) records what the SDK requires. Still to do: more than one stored sound and user phonemes, which the Verbalizer-only build now has room for.
 5. **Hardware testing.** *Not started.* CPU load with four voices, stereo output for the spatializer, and battery behaviour.
 
 The stereo spatializer, which also gave the original its echo, is not ported. The engine mixes its voices to mono for now.
@@ -135,7 +135,7 @@ With a multi-configuration generator such as Visual Studio the program is in `bu
 
 MIT. See [LICENSE](LICENSE). The vocal tract is derived from Chip Gracey's `VocalTract`, which Parallax also released under the MIT License; its notice is kept in [engine/vocal_tract.c](engine/vocal_tract.c).
 
-The FM-1 firmware is built on M-VAVE's official SDK, whose application code is GPL-3.0, so a built firmware and its source are distributed under GPL-3.0. In this repository that applies to `firmware/fm1_open.patch`, which modifies M-VAVE's files. The engine, tools and the rest of `firmware/` stay MIT.
+The FM-1 firmware is built on M-VAVE's official SDK, whose application code is GPL-3.0, so a built firmware and its source are distributed under GPL-3.0. In this repository that applies to `firmware/fm1_open.patch` and `firmware/fm1_open_only.patch`, which modify M-VAVE's files, and to `firmware/only/app/screen.c`, which is cut down from one of them. The engine, tools and the rest of `firmware/` stay MIT.
 
 ## Related
 
