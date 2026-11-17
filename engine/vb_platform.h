@@ -15,6 +15,18 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/*
+ * A build may put a vb_config.h beside the engine. The one setting so far:
+ *
+ *   #define VB_NO_EXTRAS 1   leave out the phonemes and words that were added
+ *                            to the original instrument's (about 2 KB)
+ */
+#if defined(__has_include)
+#if __has_include("vb_config.h")
+#include "vb_config.h"
+#endif
+#endif
+
 #if defined(__GCC_PI32V2__) && !defined(VB_CODE)
 /* JieLi PI32v2 (the FM-1): the SDK's RAM sections for audio code and data. */
 #define VB_CODE __attribute__((section(".volatile_ram_code")))

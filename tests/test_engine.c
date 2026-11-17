@@ -502,6 +502,96 @@ static void test_instrument_words(void)
     samples_free(&s);
 }
 
+#ifndef VB_NO_EXTRAS
+/* The words and consonants added to the original's. */
+static void test_instrument_extras(void)
+{
+    static verbalizer vb;
+    static const uint8_t lengths[] = { 0, 40, 255 };
+    uint64_t seen[VB_WORDS];
+    int word, i, j;
+
+    /* every word, at the shortest, the usual and the longest LENGTH */
+    for (word = 1; word < VB_WORDS; word++) {
+        for (i = 0; i < 3; i++) {
+            samples s = { 0 };
+
+            vb_init(&vb);
+            vb_set_mode(&vb, VB_MODE_WORDS);
+            vb.pot[VB_POT_WORD] = (uint8_t)(word * 15 + 7);
+            vb.pot[VB_POT_WORD_TIME] = lengths[i];
+            vb_note_on(&vb, 45);
+            render(&vb, &s, 140000, 256);
+            CHECK(peak(s.data, 140000) > (1 << 23));
+            /* well short of the overflow at 1 << 31 */
+            CHECK(peak(s.data, 140000) < (1 << 30));
+            /* it ends by itself, and fits the tract's queue */
+            CHECK(voices_busy(&vb) == 0);
+            CHECK(peak(s.data + 139000, 1000) < (1 << 16));
+            CHECK(total_dropped(&vb) == 0);
+            if (i == 1)
+                seen[word] = samples_hash(&s);
+            samples_free(&s);
+        }
+    }
+    for (i = 1; i < VB_WORDS; i++)
+        for (j = 1; j < i; j++)
+            CHECK(seen[i] != seen[j]);
+
+    /* a knob past the last word says the last word */
+    {
+        samples s = { 0 };
+
+        vb_init(&vb);
+        vb_set_mode(&vb, VB_MODE_WORDS);
+        vb.pot[VB_POT_WORD] = 255;
+        vb.pot[VB_POT_WORD_TIME] = 40;
+        vb_note_on(&vb, 45);
+        render(&vb, &s, 140000, 256);
+        CHECK(samples_hash(&s) == seen[VB_WORDS - 1]);
+        samples_free(&s);
+    }
+
+    /* every consonant as the sustained phoneme: it sounds, follows its
+     * volume knob down to silence, and stops on release */
+    for (i = VB_PH_M; i <= VB_PH_G; i++) {
+        samples s = { 0 };
+
+        if (i == VB_PH_BLAH || i == VB_PH_SUSTAIN_AH)
+            continue;
+        vb_init(&vb);
+        vb.pot[VB_POT_TRIG_PHONEME] = 0;
+        vb.pot[VB_POT_TRIG_TIME] = 5;
+        vb.pot[VB_POT_SUS_PHONEME] = (uint8_t)(i * 7 + 3);
+        vb.pot[VB_POT_SUS_TIME] = 20;
+        vb.pot[VB_POT_SUS_VOLUME] = 90;
+        vb.pot[VB_POT_REL_PHONEME] = 0;
+        vb.pot[VB_POT_REL_TIME] = 10;
+        vb_note_on(&vb, 45);
+        render(&vb, &s, 8000, 256);
+        CHECK(peak(s.data + 4000, 4000) > (1 << 21));
+        CHECK(peak(s.data + 4000, 4000) < (1 << 30));
+        vb_note_off(&vb, 45);
+        render(&vb, &s, 8000, 256);
+        CHECK(peak(s.data + 15000, 1000) < (1 << 16));
+        CHECK(total_dropped(&vb) == 0);
+        samples_free(&s);
+
+        memset(&s, 0, sizeof s);
+        vb_init(&vb);
+        vb.pot[VB_POT_TRIG_PHONEME] = 0;
+        vb.pot[VB_POT_SUS_PHONEME] = (uint8_t)(i * 7 + 3);
+        vb.pot[VB_POT_SUS_TIME] = 20;
+        vb.pot[VB_POT_SUS_VOLUME] = 0;
+        vb.pot[VB_POT_REL_PHONEME] = 0;
+        vb_note_on(&vb, 45);
+        render(&vb, &s, 8000, 256);
+        CHECK(peak(s.data + 4000, 4000) < (1 << 16));
+        samples_free(&s);
+    }
+}
+#endif
+
 static void test_instrument_formants(void)
 {
     static verbalizer vb;
@@ -944,6 +1034,9 @@ int main(int argc, char **argv)
     test_instrument_tsr();
     test_instrument_polyphony();
     test_instrument_words();
+#ifndef VB_NO_EXTRAS
+    test_instrument_extras();
+#endif
     test_instrument_formants();
     test_instrument_first_note();
     test_instrument_rest();

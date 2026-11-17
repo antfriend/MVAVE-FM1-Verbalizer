@@ -112,9 +112,52 @@ press(OCT_UP);
 peak(0.1);
 check('OCT + lights up', led(OCT_UP) === 1, 'button light');
 
+// The screen starts in the green CRT colours; FX swaps to the stock colours
+// and back.
+const FX = 2, CRT_GREEN = 0x37e6;
+const green = () => new Uint16Array(c.memory.buffer, c.sim_pixels(), 57600).reduce((n, p) => n + (p === CRT_GREEN), 0);
+check('the screen starts in CRT green', green() > 1000, `${green()} green pixels`);
+check('the settings sector starts blank', word(flashCopy(), SETTINGS) === 0xffffffff, word(flashCopy(), SETTINGS).toString(16));
+press(FX);
+peak(2.0);
+check('the choice is stored', word(flashCopy(), SETTINGS) === 0x31534256 && flashCopy()[SETTINGS + 6] === 1, 'settings record');
+check('FX swaps to the stock colours', green() === 0 && lit() > 2000, `${green()} green pixels`);
+press(FX);
+peak(0.3);
+check('and back', green() > 1000, `${green()} green pixels`);
+
 // The page's shortcuts into the stock editors have nothing to open.
 check('a stock editor shortcut is refused', c.sim_open(2) === -1, 'sim_open(2)');
 check('and the page stays', shownPage() === VERBALIZER_PAGE, `page ${shownPage()}`);
+
+// One page back from Trigger is Words, where ALGORITHM picks the word. The
+// fourteenth is "yes": it ends in a hiss, which "blah" has none of, so its
+// signal changes sign far more often.
+const crossings = (seconds) => {
+  let count = 0, last = 0;
+  for (let block = 0; block < Math.ceil(seconds * 44100 / frames); block++) {
+    const at = c.sim_render();
+    for (const sample of new Float32Array(c.memory.buffer, at, frames * 2).filter((_, i) => i % 2 === 0)) {
+      if (sample * last < 0) count++;
+      if (sample) last = sample;
+    }
+  }
+  return count / seconds;
+};
+turn(SELECT, -1);
+midi(0x90, 60, 127);
+const blah = crossings(0.5);
+peak(3.0);
+midi(0x80, 60, 0);
+turn(ALGORITHM, 14);
+midi(0x90, 60, 127);
+const yes = crossings(0.5);
+check('Words: ALGORITHM picks another word', yes > 2 * blah && blah > 0, `${Math.round(blah)} and ${Math.round(yes)} sign changes a second`);
+peak(3.0);
+level = peak(0.2);
+check('and the word ends while the key is still held', level < SILENT, level.toExponential(2));
+midi(0x80, 60, 0);
+turn(SELECT, 1);
 
 // From Trigger, three pages on is Formant 1: Formants mode, a voiced vowel.
 turn(SELECT, 3);
@@ -138,7 +181,6 @@ check('SAVE writes the knobs', word(flashCopy(), KNOBS) === 0x31424256, word(fla
 press(GLO);
 peak(0.1);
 check('GLO opens the Bluetooth page', shownPage() === BLUETOOTH_PAGE, `page ${shownPage()}`);
-check('the settings sector starts blank', word(flashCopy(), SETTINGS) === 0xffffffff, word(flashCopy(), SETTINGS).toString(16));
 turn(KNOB1, -1);
 peak(2.0);
 let saved = flashCopy();

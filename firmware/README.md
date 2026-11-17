@@ -21,7 +21,7 @@ Both compile, link, pass the SDK's checks and package into an update file. **Nei
 
 | Page | Mode | ALGORITHM | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 | PRESETS |
 |---|---|---|---|---|---|---|---|
-| 1 Words | Words | | length | | | | |
+| 1 Words | Words | word (Verbalizer-only build) | length | | | | |
 | 2 Trigger | Trigger / Sustain / Release | phoneme | time | volume | vibrato depth | vibrato rate | |
 | 3 Sustain | Trigger / Sustain / Release | phoneme | time | volume | vibrato depth | vibrato rate | |
 | 4 Release | Trigger / Sustain / Release | phoneme | time | volume | vibrato depth | vibrato rate | |
@@ -72,6 +72,8 @@ What it does:
 - **MASTER is the volume.** USB audio and Bluetooth audio from a computer or phone are still mixed into the output.
 - **GLO opens the Bluetooth page** (HOME or GLO again goes back). KNOB 1 turns Bluetooth on and off, KNOB 2 Bluetooth audio, KNOB 3 chooses whether the FM-1 is a Bluetooth MIDI device or host. PRESETS picks an action and SAVE confirms it, as on the stock page. These settings are stored a moment after they change.
 
+- **The screen is in green CRT colours.** FX swaps between that and M-VAVE's colours, and the choice is stored with the Bluetooth settings.
+
 What is gone:
 
 - Every stock sound, the sequencer and arpeggiator, the effects, projects, samples and the DX7 library, and all their screens.
@@ -81,7 +83,8 @@ What is gone:
 What to know:
 
 - **The stock sound code is still in the image, but never runs.** It is inside M-VAVE's closed library, and the SDK's build refuses an image without it. The audio interrupt no longer calls it, so its processor time goes to the Verbalizer. Whether the library minds never being called is not known until it runs on a device.
-- **The image is 390 KB of the 454 KB allowed, so 64 KB are free**, against 169 bytes in the combined build.
+- **It has seventeen words and fourteen more phonemes.** On the Words page ALGORITHM picks the word, and the phoneme controls of the Trigger, Sustain and Release pages go on past NOISE through M, N, NG, W, Y, H, F, S, SH, V, Z, B, D and G. [docs/controls.md](../docs/controls.md) and [docs/phonemes.md](../docs/phonemes.md) list them. The combined build has no room for these: there the Words page has its one word and those phoneme numbers are all noise, as on the original instrument.
+- **The image is 391 KB of the 454 KB allowed, so 63 KB are free**, against 169 bytes in the combined build.
 - **Stock data in flash is left alone.** Projects, the sample bank and the DX7 banks are neither read nor written, and are still there on going back to the stock firmware. The knobs are kept in the same sector as in the combined build, so a saved sound survives a change between the two. The Bluetooth settings take the sector before it. If a stock sample bank already reaches into either sector, that save is refused and the bank is left as it is.
 - It needs **a checkout of its own**; `install.py` refuses to mix the two builds in one.
 
@@ -96,7 +99,7 @@ What to know:
 | `only/app/screen.c` | Verbalizer-only build: the screen and panel handling, cut down from M-VAVE's `app/screen.c` | GPL-3.0, as a derivative of it |
 | `only/app/project.c`, `midi_router.c`, `transfer.c` | Verbalizer-only build: the Bluetooth settings, MIDI in, and the empty entry points M-VAVE's library still calls | MIT |
 | `only/web/engine/only_stubs.c` | Verbalizer-only build, browser only: answers for the simulator page's stock tabs | MIT |
-| `install.py` | Puts either build into an `fm1_open` checkout | MIT |
+| `install.py` | Puts either build into an `fm1_open` checkout. For the combined build it also writes `vb_config.h`, which leaves the added words and phonemes out | MIT |
 
 The firmware built from this is a modified version of M-VAVE's application and is under GPL-3.0 with their SDK linking exception. Anyone you give a build to must also be able to get this source.
 

@@ -8,22 +8,37 @@
  *   - the Verbalizer's page, which is where the device starts;
  *   - the Bluetooth page, on GLO (HOME or GLO again goes back);
  *   - the keys, which play the Verbalizer, and OCT - / OCT +;
- *   - MASTER, which is still the stock output level.
+ *   - MASTER, which is still the stock output level;
+ *   - two colour schemes, swapped with FX: a green CRT and M-VAVE's colours.
  */
 #include "instrument.h"
 #include "fm1_engine_control.h"
 #include "verbalizer/fm1_verbalizer.h"
 #include "verbalizer/fm1_verbalizer_ui.h"
 #include <string.h>
-enum {
-    BACK = 0x0000,
-    PANEL = 0x18e3,
-    TEXT = 0xef5d,
-    ACCENT = 0x07ff,
-    DIM = 0x738e,
-    GREEN = 0x07e0,
-    AMBER = 0xfd20
+/* The colours are looked up in the current scheme. The first seven have the
+ * stock names; the other eight are the knob colours. */
+enum { SCHEME_CRT, SCHEME_STOCK, SCHEMES, SCHEME_COLORS = 15 };
+static const uint16_t schemes[SCHEMES][SCHEME_COLORS] = {
+    /* a green phosphor screen: black, three greens and a near-white highlight */
+    [SCHEME_CRT] = {0x0000, 0x0140, 0x37e6, 0xaff5, 0x0400, 0x07e0, 0xaff5,
+                    0x07e0, 0x37e6, 0x07e0, 0x37e6, 0x07e0, 0x37e6, 0x07e0, 0x37e6},
+    [SCHEME_STOCK] = {0x0000, 0x18e3, 0xef5d, 0x07ff, 0x738e, 0x07e0, 0xfd20,
+                      0x3c9f, 0x07bf, 0x4eae, 0x06d4, 0xac9f, 0xed18, 0xff06, 0xfba5}
 };
+static const uint16_t *scheme = schemes[SCHEME_CRT];
+static unsigned scheme_shown;
+#define BACK   (scheme[0])
+#define PANEL  (scheme[1])
+#define TEXT   (scheme[2])
+#define ACCENT (scheme[3])
+#define DIM    (scheme[4])
+#define GREEN  (scheme[5])
+#define AMBER  (scheme[6])
+#define colors (scheme + 7)
+/* Kept with the Bluetooth settings, in project.c. */
+unsigned vb_settings_scheme(void);
+void vb_settings_scheme_set(unsigned value);
 /* Five columns per glyph, bit 0 at the top. Digits followed by uppercase. */
 static const uint8_t font[36][5] = {
     {0x3e, 0x51, 0x49, 0x45, 0x3e}, {0, 0x42, 0x7f, 0x40, 0},       {0x42, 0x61, 0x51, 0x49, 0x46},
@@ -136,7 +151,6 @@ static void text(unsigned x, unsigned y, const char *s, unsigned scale, uint16_t
 enum { BLE = 7, VERBALIZER = 19 };
 enum { OCT_DOWN, OCT_UP, FX, SCL, ENV, LFO, EDIT, GLO, HOME, SAVE, ARP, SEQ, PLAY, REC };
 #define BUTTON(b) (1U << (b))
-static const uint16_t colors[8] = {0x3c9f, 0x07bf, 0x4eae, 0x06d4, 0xac9f, 0xed18, 0xff06, 0xfba5};
 static unsigned page = VERBALIZER, vb_page = 1, vb_loaded;
 static int octave;
 static const char *notice;
@@ -421,6 +435,13 @@ static void draw(const struct fm1_ble_status *ble)
 {
     frame_time = fm1_millis();
     if (notice && (int32_t)(frame_time - notice_until) >= 0) notice = NULL;
+    /* Read here, not only on FX: the stored choice arrives after start-up. */
+    unsigned wanted = vb_settings_scheme() < SCHEMES ? vb_settings_scheme() : SCHEME_CRT;
+    if (wanted != scheme_shown) {
+        scheme_shown = wanted;
+        scheme = schemes[wanted];
+        saved_cache.shown_page = ~0U;
+    }
     frame_ble = *ble;
     if (page == BLE) {
         fm1_bluetooth_get_status(&frame_radio);
@@ -631,6 +652,7 @@ void groove_screen_control(void)
     unsigned old_page = page;
     if (pressed & BUTTON(GLO)) page = page == BLE ? VERBALIZER : BLE;
     if (pressed & BUTTON(HOME)) page = VERBALIZER;
+    if (pressed & BUTTON(FX)) vb_settings_scheme_set((vb_settings_scheme() + 1U) % SCHEMES);
     if (page != old_page) { ble_view = ble_forget = ble_action = 0; ble_result = 0; }
     octave = clamp(octave + !!(pressed & BUTTON(OCT_UP)) - !!(pressed & BUTTON(OCT_DOWN)), -2, 2);
     if (page == BLE) ble_controls(&controls, pressed, &ble);

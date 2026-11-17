@@ -55,12 +55,21 @@ enum {
     VB_POT_FM_NF    = 15
 };
 
-/* Words mode. */
+/* Words mode. The word is knob value / 15; word 0 is the original's "blah",
+ * which is the only word when the extras are left out (VB_NO_EXTRAS). */
 enum {
+    VB_POT_WORD      = 0,
     VB_POT_WORD_TIME = 1
 };
+#ifndef VB_NO_EXTRAS
+#define VB_WORDS 17
+#else
+#define VB_WORDS 1
+#endif
 
-/* Phoneme numbers (knob value / 7). 20..33 and 36 are the noise phoneme. */
+/* Phoneme numbers (knob value / 7). In the original 20..33 and 36 were all
+ * the noise phoneme; 21..33 and 36 are now consonants unless the extras are
+ * left out. */
 enum {
     VB_PH_SILENCE    = 0,  /* 0, 1 and 2 */
     VB_PH_SOAP       = 3,
@@ -81,8 +90,22 @@ enum {
     VB_PH_L          = 18,
     VB_PH_UH         = 19,
     VB_PH_NOISE      = 20,
+    VB_PH_M          = 21,
+    VB_PH_N          = 22,
+    VB_PH_NG         = 23,
+    VB_PH_W          = 24,
+    VB_PH_Y          = 25,
+    VB_PH_H          = 26,
+    VB_PH_F          = 27,
+    VB_PH_S          = 28,
+    VB_PH_SH         = 29,
+    VB_PH_V          = 30,
+    VB_PH_Z          = 31,
+    VB_PH_B          = 32,
+    VB_PH_D          = 33,
     VB_PH_BLAH       = 34, /* the word "blah", queued as several frames */
-    VB_PH_SUSTAIN_AH = 35
+    VB_PH_SUSTAIN_AH = 35,
+    VB_PH_G          = 36
 };
 
 typedef struct {

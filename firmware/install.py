@@ -107,6 +107,15 @@ def replace_stock_sources(sdk):
     print("copied %d replacement files from firmware/only" % copied)
 
 
+def leave_out_extras(sdk):
+    """The combined build has no room for the added phonemes and words."""
+    path = os.path.join(sdk, "app", "verbalizer", "vb_config.h")
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write("/* Written by install.py: the combined build's program image is full. */\n"
+                "#define VB_NO_EXTRAS 1\n")
+    print("wrote vb_config.h: added phonemes and words left out")
+
+
 def trim_factory_bank(sdk):
     path = os.path.join(sdk, "app", "fm_factory.inc")
     text = open(path, encoding="utf-8", newline="").read()
@@ -162,6 +171,7 @@ def main():
             sys.exit("%s holds the Verbalizer-only build; run this with --only, or give "
                      "the combined build a checkout of its own." % sdk)
         copy_sources(sdk)
+        leave_out_extras(sdk)
         apply_patch(sdk, "fm1_open.patch")
         trim_factory_bank(sdk)
     print("done. Build with sdk\\Build.ps1 -FirmwareOnly (see firmware/README.md).")

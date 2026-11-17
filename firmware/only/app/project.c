@@ -4,8 +4,8 @@
  *
  * M-VAVE's library still calls the application's project, sample-bank and
  * DX7-library entry points, so they exist here and do nothing. The one thing
- * kept is the Bluetooth settings (on/off, audio, MIDI role), in a sector of
- * their own; the Verbalizer's knobs are stored by fm1_verbalizer.c.
+ * kept is the Bluetooth settings (on/off, audio, MIDI role) and the screen's
+ * colour scheme, in a sector of their own; the Verbalizer's knobs are stored by fm1_verbalizer.c.
  *
  * No stock data is touched: projects, the sample bank and the DX7 banks stay
  * in flash as they were, unread.
@@ -20,10 +20,10 @@ enum { SETTINGS_IN_USE = -2 };
 
 struct stored {
     uint32_t magic;
-    uint8_t radio_off, role, spare[2];
+    uint8_t radio_off, role, scheme, spare;
     uint32_t check;
 };
-static struct { uint8_t radio_off, role; } settings;
+static struct { uint8_t radio_off, role, scheme; } settings;
 static uint8_t load_pending, role_pending, settings_dirty;
 static uint32_t settings_changed;
 static int settings_result;
@@ -31,7 +31,8 @@ static struct groove_project scratch;
 
 static uint32_t check_of(const struct stored *record)
 {
-    return ~(record->magic ^ ((uint32_t)record->radio_off | (uint32_t)record->role << 8));
+    return ~(record->magic ^ ((uint32_t)record->radio_off | (uint32_t)record->role << 8 |
+                              (uint32_t)record->scheme << 16));
 }
 static int settings_load(void)
 {
@@ -42,6 +43,7 @@ static int settings_load(void)
         record.radio_off <= GROOVE_RADIO_ALL && record.role <= FM1_BLE_CENTRAL) {
         settings.radio_off = record.radio_off;
         settings.role = record.role;
+        settings.scheme = record.scheme;
     }
     return 0;
 }
@@ -59,6 +61,7 @@ static int settings_save(void)
     record.magic = SETTINGS_MAGIC;
     record.radio_off = settings.radio_off;
     record.role = settings.role;
+    record.scheme = settings.scheme;
     record.check = check_of(&record);
     result = fm1_flash_erase(GROOVE_SETTINGS_OFFSET);
     return result ? result : fm1_flash_write(GROOVE_SETTINGS_OFFSET, &record, sizeof record);
@@ -80,6 +83,15 @@ int groove_settings_radio(unsigned flags, unsigned role)
     settings_changed = fm1_millis();
     settings_result = 0;
     return 0;
+}
+/* The screen's colour scheme: 0, the green CRT, unless one has been stored. */
+unsigned vb_settings_scheme(void) { return settings.scheme; }
+void vb_settings_scheme_set(unsigned value)
+{
+    settings.scheme = (uint8_t)value;
+    settings_dirty = 1;
+    settings_changed = fm1_millis();
+    settings_result = 0;
 }
 
 /* The SDK's build refuses an image without these library calls, which the

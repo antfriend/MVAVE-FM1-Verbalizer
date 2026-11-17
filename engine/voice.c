@@ -22,6 +22,8 @@
  *  - A voice starts with its formants on a neutral vowel instead of 0 Hz, so
  *    its first note does not sweep up through an overload.
  *  - Velocity and pitch bend, which the original had no notion of.
+ *  - Fourteen consonants take the places of repeats of the noise phoneme,
+ *    and Words mode has sixteen more words. See "sounds added" below.
  */
 #include "voice.h"
 
@@ -179,6 +181,168 @@ VB_COLD_CODE static void Select_Allophone(vb_voice *v, uint8_t pot_value, int ke
     }
 }
 
+/* ---- sounds added to the original's -------------------------------------
+ *
+ * The original has vowels, R, L and noise. These add the consonants the
+ * tract can make with its nasal branch, frication and aspiration, and the
+ * words built from them. Left out with VB_NO_EXTRAS.
+ */
+#ifndef VB_NO_EXTRAS
+
+#define HZ(x)  ((uint8_t)((x) * 100 / 1953)) /* formants and the nasal */
+#define HZ2(x) ((uint8_t)((x) * 100 / 3906)) /* frication */
+
+/* A target for the tract. `voice`, `aa` and `fa` are for a volume of 30 and
+ * scale with the volume. f1 = 0 leaves the formants where they are. */
+typedef struct {
+    uint8_t f1, f2, f3, f4;
+    uint8_t voice, aa, fa, ff, na, nf;
+} vb_sound;
+
+enum {
+    /* the fourteen phonemes, in knob order */
+    S_M, S_N, S_NG, S_W, S_Y, S_H, S_F, S_S, S_SH, S_V, S_Z, S_B, S_D, S_G,
+    /* only used by words */
+    S_QUIET, S_T, S_EE, S_IH, S_EH, S_AE, S_AH, S_OH, S_OO, S_R, S_L, S_UH
+};
+
+static const vb_sound sounds[] VB_DATA = {
+    /*             f1       f2        f3        f4       voice aa  fa  ff        na   nf */
+    [S_M]     = { HZ(250), HZ(1100), HZ(2200), HZ(3300),  36,  0,  0, 0,         255, HZ(1000) },
+    [S_N]     = { HZ(250), HZ(1500), HZ(2600), HZ(3400),  36,  0,  0, 0,         255, HZ(1500) },
+    [S_NG]    = { HZ(250), HZ(2100), HZ(2700), HZ(3400),  28,  0,  0, 0,         255, HZ(3000) },
+    [S_W]     = { HZ(290), HZ(610), HZ(2150), HZ(3300),  11,  0,  0, 0,           0, 0 },
+    [S_Y]     = { HZ(260), HZ(2200), HZ(3100), HZ(3700),  40,  0,  0, 0,           0, 0 },
+    [S_H]     = { HZ(500), HZ(1500), HZ(2500), HZ(3500),   0, 30,  0, 0,           0, 0 },
+    [S_F]     = { HZ(400), HZ(1100), HZ(2400), HZ(3500),   0,  4,  7, HZ2(7500),   0, 0 },
+    [S_S]     = { HZ(300), HZ(1700), HZ(2600), HZ(3500),   0,  0, 13, HZ2(6200),   0, 0 },
+    [S_SH]    = { HZ(300), HZ(2000), HZ(2500), HZ(3400),   0,  0, 15, HZ2(2700),   0, 0 },
+    [S_V]     = { HZ(300), HZ(1100), HZ(2400), HZ(3500),  12,  3,  5, HZ2(7500),   0, 0 },
+    [S_Z]     = { HZ(300), HZ(1700), HZ(2600), HZ(3500),  17,  0,  9, HZ2(6200),   0, 0 },
+    [S_B]     = { HZ(200), HZ(800), HZ(2200), HZ(3300),   8,  0,  0, 0,           0, 0 },
+    [S_D]     = { HZ(200), HZ(1700), HZ(2700), HZ(3500),  13,  0,  0, 0,           0, 0 },
+    [S_G]     = { HZ(200), HZ(2100), HZ(2400), HZ(3400),  12,  0,  0, 0,           0, 0 },
+    [S_QUIET] = { 0, 0, 0, 0,                            0,  0,  0, 0,           0, 0 },
+    [S_T]     = { 0, 0, 0, 0,                            0,  0, 20, HZ2(4500),   0, 0 },
+    [S_EE]    = { HZ(280), HZ(2040), HZ(3040), HZ(3600),  43,  0,  0, 0,           0, 0 },
+    [S_IH]    = { HZ(450), HZ(2060), HZ(2700), HZ(3570),  42,  0,  0, 0,           0, 0 },
+    [S_EH]    = { HZ(550), HZ(1950), HZ(2600), HZ(3400),  39,  0,  0, 0,           0, 0 },
+    [S_AE]    = { HZ(700), HZ(1800), HZ(2550), HZ(3400),  38,  0,  0, 0,           0, 0 },
+    [S_AH]    = { HZ(750), HZ(1100), HZ(2500), HZ(3500),  25,  0,  0, 0,           0, 0 },
+    [S_OH]    = { HZ(575), HZ(900), HZ(2450), HZ(3500),  22,  0,  0, 0,           0, 0 },
+    [S_OO]    = { HZ(275), HZ(850), HZ(2400), HZ(3500),  23,  0,  0, 0,           0, 0 },
+    [S_R]     = { HZ(450), HZ(1200), HZ(1500), HZ(3050),  11,  0,  0, 0,           0, 0 },
+    [S_L]     = { HZ(380), HZ(950), HZ(2700), HZ(3600),  19,  0,  0, 0,           0, 0 },
+    [S_UH]    = { HZ(650), HZ(1300), HZ(2600), HZ(3100),  30,  0,  0, 0,           0, 0 }
+};
+
+VB_COLD_CODE static uint8_t scaled(unsigned amount, int level)
+{
+    amount = amount * (unsigned)level / 30u;
+    return BYTE(amount > 255u ? 255u : amount);
+}
+
+/* Stage a sound at `level` (30 is the sound as written). Always set gp
+ * before calling this. */
+VB_COLD_CODE static void set_sound(vb_voice *v, unsigned id, int level)
+{
+    const vb_sound *s = &sounds[id];
+
+    /* The hiss and the nasal notch start at their own frequency instead of
+     * sweeping to it: move the frequency first, while they are still off. */
+    if ((s->fa && !v->p.fa) || (s->na && !v->p.na)) {
+        if (s->fa)
+            v->p.ff = s->ff;
+        if (s->na)
+            v->p.nf = s->nf;
+        go(v, 1);
+    }
+    if (s->f1) {
+        v->p.f1 = s->f1;
+        v->p.f2 = s->f2;
+        v->p.f3 = s->f3;
+        v->p.f4 = s->f4;
+    }
+    ga_wrapper(v, s->voice * level / 30);
+    v->p.aa = scaled(s->aa, level);
+    v->p.fa = scaled(s->fa, level);
+    v->p.na = s->na;
+}
+
+/*
+ * The words. Each step is a sound, a time and a pitch: the tract glides to
+ * the sound over the time, at the key's pitch plus so many semitones. A time
+ * with LEN is in units that the LENGTH knob stretches (3.4 ms each at the
+ * knob's usual 40, never less than 0.6 ms, so a glide is never a jump); a plain time is in the tract's 700 us steps and stays as
+ * it is, which keeps consonants crisp however long the word is drawn out.
+ */
+#define LEN 0x80
+#define END 0xff
+
+static const uint8_t words[] VB_DATA = {
+    /* yeah   */ S_Y, 25, 0,  S_AE, LEN | 50, 0,  S_AE, LEN | 40, 0,  S_UH, LEN | 40, (uint8_t)-2,  END,
+    /* wow    */ S_W, 30, 0,  S_AH, LEN | 50, 0,  S_AH, LEN | 30, 0,  S_OO, LEN | 60, (uint8_t)-2,  END,
+    /* why    */ S_W, 30, 0,  S_AH, LEN | 50, 0,  S_AH, LEN | 40, 0,  S_IH, LEN | 60, (uint8_t)-1,  END,
+    /* you    */ S_Y, 30, 0,  S_OO, LEN | 50, 0,  S_OO, LEN | 70, (uint8_t)-2,  END,
+    /* oh     */ S_OH, 20, 0,  S_OH, LEN | 60, 0,  S_OO, LEN | 50, (uint8_t)-3,  END,
+    /* la     */ S_L, 35, 0,  S_AH, LEN | 35, 0,  S_AH, LEN | 90, 0,  END,
+    /* ah-oo  */ S_AH, 20, 0,  S_AH, LEN | 60, 0,  S_QUIET, 25, 0,  S_OO, 20, 5,  S_OO, LEN | 90, 5,  END,
+    /* really */ S_R, 35, 0,  S_EE, LEN | 40, 0,  S_EE, LEN | 30, 0,  S_L, LEN | 30, 0,
+                 S_EE, LEN | 30, 2,  S_EE, LEN | 50, 3,  END,
+    /* mama   */ S_M, 40, 0,  S_M, 40, 0,  S_AH, LEN | 25, 0,  S_AH, LEN | 40, 0,
+                 S_M, 45, 0,  S_AH, LEN | 25, 0,  S_AH, LEN | 60, (uint8_t)-2,  END,
+    /* no     */ S_N, 45, 0,  S_N, 30, 0,  S_OH, LEN | 30, 0,  S_OH, LEN | 50, 0,  S_OO, LEN | 40, (uint8_t)-3,  END,
+    /* now    */ S_N, 45, 0,  S_N, 30, 0,  S_AH, LEN | 35, 0,  S_AH, LEN | 40, 0,  S_OO, LEN | 50, (uint8_t)-2,  END,
+    /* one    */ S_W, 30, 0,  S_UH, LEN | 40, 0,  S_UH, LEN | 30, 0,  S_N, 40, 0,  S_N, 60, (uint8_t)-2,  END,
+    /* amen   */ S_AH, 20, 0,  S_AH, LEN | 50, 0,  S_M, 40, 0,  S_M, 35, 0,  S_EH, LEN | 25, 0,
+                 S_EH, LEN | 30, 0,  S_N, 40, (uint8_t)-3,  S_N, 60, (uint8_t)-3,  END,
+    /* yes    */ S_Y, 25, 0,  S_EH, LEN | 40, 0,  S_EH, LEN | 40, 0,  S_S, 25, 0,  S_S, 110, 0,  END,
+    /* hello  */ S_H, 30, 0,  S_H, 40, 0,  S_EH, LEN | 20, 0,  S_EH, LEN | 20, 0,  S_L, LEN | 25, 0,
+                 S_L, 30, 0,  S_OH, LEN | 30, 2,  S_OH, LEN | 50, 0,  S_OO, LEN | 40, (uint8_t)-3,  END,
+    /* robot  */ S_R, 35, 0,  S_OH, LEN | 30, 0,  S_OH, LEN | 30, 0,  S_B, 30, 0,  S_B, 25, 0,
+                 S_AH, LEN | 20, (uint8_t)-2,  S_AH, LEN | 40, (uint8_t)-2,  S_QUIET, 35, (uint8_t)-2,
+                 S_T, 8, (uint8_t)-2,  S_QUIET, 20, (uint8_t)-2,  END
+};
+
+/* `word` is 1..VB_WORDS - 1. */
+VB_COLD_CODE static void go_word(vb_voice *v, unsigned word, int key)
+{
+    const uint8_t *step = words;
+    unsigned t = v->pot[VB_POT_WORD_TIME];
+
+    /* a pitch byte can equal END, so walk whole steps */
+    while (--word) {
+        while (step[0] != END)
+            step += 3;
+        step++;
+    }
+    for (; step[0] != END; step += 3) {
+        unsigned time = step[1] & LEN ? (step[1] & 0x7fu) * (t + 8u) / 10u : step[1];
+
+        set_gp_to_pitch(v, key + (int8_t)step[2]);
+        set_sound(v, step[0], 30);
+        go(v, time);
+    }
+}
+
+#endif /* VB_NO_EXTRAS */
+
+/* A phase of a keystroke: the phoneme on its knob at the volume on its knob. */
+VB_COLD_CODE static void phoneme(vb_voice *v, uint8_t pot_value, uint8_t volume, int key)
+{
+#ifndef VB_NO_EXTRAS
+    unsigned number = pot_value / 7u;
+
+    if ((number >= VB_PH_M && number <= VB_PH_D) || number == VB_PH_G) {
+        set_gp_to_pitch(v, key);
+        set_sound(v, number == VB_PH_G ? S_G : number - VB_PH_M, volume / 3);
+        return;
+    }
+#endif
+    Select_Allophone(v, pot_value, key);
+    ga_wrapper(v, volume / 3);
+}
+
 /* ---- public ------------------------------------------------------------ */
 
 VB_COLD_CODE void vb_voice_start(vb_voice *v, const uint8_t *pot)
@@ -208,8 +372,7 @@ VB_COLD_CODE void vb_voice_trigger(vb_voice *v, int key)
     set_gp_to_pitch(v, key);
     v->p.vp = pot[VB_POT_TRIG_VIB_DEPTH] / 3;
     v->p.vr = pot[VB_POT_TRIG_VIB_RATE] / 3;
-    Select_Allophone(v, pot[VB_POT_TRIG_PHONEME], key);
-    ga_wrapper(v, pot[VB_POT_TRIG_VOLUME] / 3);
+    phoneme(v, pot[VB_POT_TRIG_PHONEME], pot[VB_POT_TRIG_VOLUME], key);
     go(v, pot[VB_POT_TRIG_TIME] * 2u);
     for (i = 0; i < 6; i++)
         go(v, 1);
@@ -222,8 +385,7 @@ VB_COLD_CODE void vb_voice_sustain(vb_voice *v, int key)
 
     v->p.vp = pot[VB_POT_SUS_VIB_DEPTH] / 3;
     v->p.vr = pot[VB_POT_SUS_VIB_RATE] / 3;
-    Select_Allophone(v, pot[VB_POT_SUS_PHONEME], key);
-    ga_wrapper(v, pot[VB_POT_SUS_VOLUME] / 3);
+    phoneme(v, pot[VB_POT_SUS_PHONEME], pot[VB_POT_SUS_VOLUME], key);
     go(v, pot[VB_POT_SUS_TIME] * 2u);
     for (i = 0; i < 6; i++)
         go(v, 1);
@@ -236,8 +398,7 @@ VB_COLD_CODE void vb_voice_release(vb_voice *v, int key)
 
     v->p.vp = pot[VB_POT_REL_VIB_DEPTH] / 3;
     v->p.vr = pot[VB_POT_REL_VIB_RATE] / 3;
-    Select_Allophone(v, pot[VB_POT_REL_PHONEME], key);
-    ga_wrapper(v, pot[VB_POT_REL_VOLUME] / 3);
+    phoneme(v, pot[VB_POT_REL_PHONEME], pot[VB_POT_REL_VOLUME], key);
     go(v, pot[VB_POT_REL_TIME] * 2u);
 
     /* now quickly go to silence */
@@ -250,6 +411,15 @@ VB_COLD_CODE void vb_voice_release(vb_voice *v, int key)
 
 VB_COLD_CODE void vb_voice_word(vb_voice *v, int key)
 {
+#ifndef VB_NO_EXTRAS
+    unsigned word = v->pot[VB_POT_WORD] / 15u;
+
+    if (word) {
+        go_word(v, word < VB_WORDS ? word : VB_WORDS - 1u, key);
+        vb_voice_null(v);
+        return;
+    }
+#endif
     go_blah(v, key);
     vb_voice_null(v);
 }

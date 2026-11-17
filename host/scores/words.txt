@@ -1,0 +1,172 @@
+# Every word of Words mode, in knob order, then a few at other lengths and
+# pitches. Render it with:
+#   verbalize host/scores/words.txt words.wav
+
+mode words
+pot 1 40        # LENGTH
+
+# blah
+pot 0 7
+on 45
+wait 1100
+off 45
+wait 300
+
+# yeah
+pot 0 22
+on 45
+wait 1100
+off 45
+wait 300
+
+# wow
+pot 0 37
+on 45
+wait 1100
+off 45
+wait 300
+
+# why
+pot 0 52
+on 45
+wait 1100
+off 45
+wait 300
+
+# you
+pot 0 67
+on 45
+wait 1100
+off 45
+wait 300
+
+# oh
+pot 0 82
+on 45
+wait 1100
+off 45
+wait 300
+
+# la
+pot 0 97
+on 45
+wait 1100
+off 45
+wait 300
+
+# ah-oo
+pot 0 112
+on 45
+wait 1100
+off 45
+wait 300
+
+# really
+pot 0 127
+on 45
+wait 1100
+off 45
+wait 300
+
+# mama
+pot 0 142
+on 45
+wait 1100
+off 45
+wait 300
+
+# no
+pot 0 157
+on 45
+wait 1100
+off 45
+wait 300
+
+# now
+pot 0 172
+on 45
+wait 1100
+off 45
+wait 300
+
+# one
+pot 0 187
+on 45
+wait 1100
+off 45
+wait 300
+
+# amen
+pot 0 202
+on 45
+wait 1100
+off 45
+wait 300
+
+# yes
+pot 0 217
+on 45
+wait 1100
+off 45
+wait 300
+
+# hello
+pot 0 232
+on 45
+wait 1100
+off 45
+wait 300
+
+# robot
+pot 0 247
+on 45
+wait 1100
+off 45
+wait 300
+
+# drawn out
+pot 1 110
+pot 0 232        # hello
+on 45
+wait 2200
+off 45
+wait 300
+pot 0 127        # really
+on 45
+wait 2200
+off 45
+wait 300
+pot 0 37        # wow
+on 45
+wait 2200
+off 45
+wait 300
+
+# sung: "la" up a scale, then "amen" as a chord
+pot 1 40
+pot 0 97
+on 45
+wait 450
+off 45
+on 47
+wait 450
+off 47
+on 49
+wait 450
+off 49
+on 50
+wait 450
+off 50
+on 52
+wait 450
+off 52
+pot 1 90
+pot 0 202
+on 45
+on 49
+on 52
+wait 2500
+off 45
+off 49
+off 52
+wait 300

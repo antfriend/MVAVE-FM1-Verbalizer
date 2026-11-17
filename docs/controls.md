@@ -36,9 +36,26 @@ There are four voices. A fifth key waits until a voice has finished. A key that 
 
 | Knob | Use |
 |---|---|
+| 0 | Which word (value / 15) |
 | 1 | Word duration |
 
-Each key says the one built-in word ("blah") at its pitch. The word ends on its own; holding the key does nothing more. The falling tail comes from the closing fade gliding to key 1's pitch.
+Each key says the chosen word at its pitch. The word ends on its own; holding the key does nothing more. The falling tail comes from the closing fade gliding to key 1's pitch.
+
+| Knob 0 | Word | | Knob 0 | Word |
+|---|---|---|---|---|
+| 0–14 | blah | | 135–149 | mama |
+| 15–29 | yeah | | 150–164 | no |
+| 30–44 | wow | | 165–179 | now |
+| 45–59 | why | | 180–194 | one |
+| 60–74 | you | | 195–209 | amen |
+| 75–89 | oh | | 210–224 | yes |
+| 90–104 | la | | 225–239 | hello |
+| 105–119 | ah-oo | | 240–255 | robot |
+| 120–134 | really | | | |
+
+"blah" is the original's one word, and knob 0 did nothing in the original. The other sixteen are additions. In them the duration knob stretches the vowels and glides and leaves the consonants as they are, and each has a small rise or fall of pitch built in. They have been balanced for loudness and checked on spectrograms, but **not yet tuned by ear**: expect some to need work.
+
+A build can leave the additions out (`VB_NO_EXTRAS`, see `engine/vb_platform.h`); then "blah" is the only word. The combined FM-1 firmware does, for lack of room.
 
 ## Formants mode
 

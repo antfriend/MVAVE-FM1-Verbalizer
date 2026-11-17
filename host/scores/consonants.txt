@@ -1,0 +1,172 @@
+# The fourteen added consonants in Trigger / Sustain / Release mode.
+# Render it with:
+#   verbalize host/scores/consonants.txt consonants.wav
+
+mode tsr
+
+# as the trigger, into "a": ma, na, nga, wa, ya, ha, fa, sa, sha, va, za, ba, da, ga
+# knobs:  phoneme time volume vib-depth vib-rate
+pots 150 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # M
+on 45
+wait 500
+off 45
+wait 300
+pots 157 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # N
+on 45
+wait 500
+off 45
+wait 300
+pots 164 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # NG
+on 45
+wait 500
+off 45
+wait 300
+pots 171 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # W
+on 45
+wait 500
+off 45
+wait 300
+pots 178 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # Y
+on 45
+wait 500
+off 45
+wait 300
+pots 185 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # H
+on 45
+wait 500
+off 45
+wait 300
+pots 192 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # F
+on 45
+wait 500
+off 45
+wait 300
+pots 199 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # S
+on 45
+wait 500
+off 45
+wait 300
+pots 206 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # SH
+on 45
+wait 500
+off 45
+wait 300
+pots 213 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # V
+on 45
+wait 500
+off 45
+wait 300
+pots 220 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # Z
+on 45
+wait 500
+off 45
+wait 300
+pots 227 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # B
+on 45
+wait 500
+off 45
+wait 300
+pots 234 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # D
+on 45
+wait 500
+off 45
+wait 300
+pots 255 40 90 0 0   87 30 90 0 0   87 40 0 60 0 0     # G
+on 45
+wait 500
+off 45
+wait 300
+
+# as the release, out of "a": am, an, ang, ...
+pots 87 10 90 0 0   87 30 90 0 0   150 60 0 90 0 0     # M
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   157 60 0 90 0 0     # N
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   164 60 0 90 0 0     # NG
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   171 60 0 90 0 0     # W
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   178 60 0 90 0 0     # Y
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   185 60 0 90 0 0     # H
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   192 60 0 90 0 0     # F
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   199 60 0 90 0 0     # S
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   206 60 0 90 0 0     # SH
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   213 60 0 90 0 0     # V
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   220 60 0 90 0 0     # Z
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   227 60 0 90 0 0     # B
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   234 60 0 90 0 0     # D
+on 45
+wait 400
+off 45
+wait 400
+pots 87 10 90 0 0   87 30 90 0 0   255 60 0 90 0 0     # G
+on 45
+wait 400
+off 45
+wait 400
+
+# syllables from the three knobs: "mom", "sis", "dad", "wow"
+pots 150 40 90 0 0   94 40 90 0 0   150 70 0 90 0 0
+on 45
+wait 500
+off 45
+wait 400
+pots 199 40 90 0 0   73 40 90 0 0   199 70 0 90 0 0
+on 45
+wait 500
+off 45
+wait 400
+pots 234 40 90 0 0   38 40 90 0 0   234 70 0 90 0 0
+on 45
+wait 500
+off 45
+wait 400
+pots 171 40 90 0 0   94 40 90 0 0   171 70 0 90 0 0
+on 45
+wait 500
+off 45
+wait 400
