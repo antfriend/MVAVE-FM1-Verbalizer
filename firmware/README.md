@@ -74,6 +74,8 @@ What it does:
 
 - **The screen is in green CRT colours.** FX swaps between that and M-VAVE's colours, and the choice is stored with the Bluetooth settings.
 
+- **The Toot Toot Engineering eye watches from the header.** A white eyeball with a red iris, the symbol of antfriend.github.io, sits right of the page title on every page. Its iris and pupil glance to a new spot every 1.5 to 3 seconds, and the screen repaints only that small square each time. It is not in the combined build, which has no flash to spare.
+
 What is gone:
 
 - Every stock sound, the sequencer and arpeggiator, the effects, projects, samples and the DX7 library, and all their screens.

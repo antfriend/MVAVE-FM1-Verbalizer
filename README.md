@@ -1,3 +1,7 @@
+<p align="center"><img src="docs/toot-toot-eye.svg" alt="The Toot Toot Engineering eye" width="100" height="100"></p>
+
+<p align="center"><em>A by product of Toot Toot Engineering!</em></p>
+
 # MVAVE FM1 Verbalizer
 
 A vocal-tract synthesizer firmware for the M-VAVE FM-1 pocket synth: a port of [The Verbalizer](https://github.com/antfriend/Verbalizer), a one-of-a-kind formant instrument originally built on the Parallax Propeller.

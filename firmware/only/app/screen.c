@@ -167,7 +167,7 @@ static uint32_t ble_stage_since;
 static uint32_t health_at, health_dropped, health_dma;
 struct draw_cache {
     unsigned shown_page;
-    uint32_t title_cache, hint_cache;
+    uint32_t title_cache, hint_cache, eye_cache;
     uint32_t foot_cache[4], row_cache[8], tile_cache[8];
 };
 static struct draw_cache saved_cache, band_cache, *cache = &saved_cache;
@@ -273,6 +273,68 @@ static void knob(unsigned col, const char *label, const char *value, uint16_t co
     paint_fill(x, 195, 54, 2, color);
     text(x, 200, label, 1, TEXT, BACK);
     text(x, 212, value, strlen(value) <= 4 ? 2 : 1, color, BACK);
+}
+/* The Toot Toot Engineering eye: a white eyeball with a red iris that glances
+ * about, as in the animated symbol on antfriend.github.io (its 100-unit
+ * drawing scaled to a 27-pixel ball). It sits in the header, right of the
+ * title, on every page. The iris and pupil jump to a new spot every 1.5 to 3
+ * seconds; only then is the eye marked for repainting. */
+enum { EYE_X = 168, EYE_Y = 14, EYE_R = 13, EYE_RED = 0xf800, EYE_WHITE = 0xffff };
+static int8_t eye_dx, eye_dy;
+static uint32_t eye_next, eye_random = 0x2545f491U;
+/* Look at (x, y), in pixels from the centre, until `until`. */
+static void eye_look(int x, int y, uint32_t until)
+{
+    if (x * x + y * y > 20) { x = x * 3 / 4; y = y * 3 / 4; } /* the iris stays inside the ball */
+    eye_dx = (int8_t)x;
+    eye_dy = (int8_t)y;
+    eye_next = until;
+}
+/* Glance toward the control that was just used: the encoders in the order of
+ * the table are SELECT, ALGORITHM, KNOB 1-4 and PRESETS, each toward where its
+ * value is drawn; a key looks along the keyboard, left to right. */
+static void eye_glance_encoder(unsigned encoder, uint32_t now)
+{
+    static const int8_t toward[7][2] = {{-3, -3}, {-4, 1}, {-3, 3}, {-1, 3}, {1, 3}, {3, 3}, {-2, 3}};
+    eye_look(toward[encoder][0], toward[encoder][1], now + 1500U);
+}
+static void eye_glance_key(unsigned key, uint32_t now) { eye_look((int)(key * 8U / 26U) - 4, 2, now + 1500U); }
+static void eye_update(uint32_t now)
+{
+    if ((int32_t)(now - eye_next) < 0) return;
+    eye_random ^= eye_random << 13; eye_random ^= eye_random >> 17; eye_random ^= eye_random << 5;
+    int x = (int)(eye_random % 9U) - 4, y = (int)((eye_random >> 8) % 9U) - 4;
+    eye_look(x, y, now + 1500U + (eye_random >> 16) % 1500U);
+}
+static __attribute__((noinline)) void eye_draw(void)
+{
+    if (!paint_rendering) {
+        uint32_t sig = 0x10000U | (uint32_t)(eye_dx + 8) << 8 | (uint32_t)(eye_dy + 8);
+        if (cache->eye_cache == sig) return;
+        cache->eye_cache = sig;
+        paint_mark(EYE_X - EYE_R, EYE_Y - EYE_R, 2 * EYE_R + 1, 2 * EYE_R + 1);
+        return;
+    }
+    unsigned top = EYE_Y - EYE_R, bottom = EYE_Y + EYE_R + 1;
+    unsigned left = EYE_X - EYE_R, right = EYE_X + EYE_R + 1;
+    unsigned row = top < paint_top ? paint_top : top;
+    unsigned row_end = bottom < paint_top + PAINT_ROWS ? bottom : paint_top + PAINT_ROWS;
+    unsigned col_start = left < paint_x ? paint_x : left;
+    unsigned col_end = right < paint_end ? right : paint_end;
+    unsigned stride = paint_end - paint_x;
+    for (; row < row_end; ++row)
+        for (unsigned col = col_start; col < col_end; ++col) {
+            int dx = (int)col - EYE_X, dy = (int)row - EYE_Y, d2 = dx * dx + dy * dy;
+            if (d2 > 160) continue; /* r 12.6: no spurs at the compass points */
+            int ix = dx - eye_dx, iy = dy - eye_dy, i2 = ix * ix + iy * iy;
+            int hx = dx + 3, hy = dy + 3;
+            uint16_t color = d2 > 130 ? TEXT /* outline */
+                : hx * hx + hy * hy <= 6 ? EYE_WHITE /* highlight */
+                : i2 <= 9 ? BACK /* pupil */
+                : i2 <= 49 ? EYE_RED /* iris */
+                : EYE_WHITE;
+            paint_pixels[(row - paint_top) * stride + col - paint_x] = color;
+        }
 }
 static void radio_line(unsigned slot, unsigned y, const char *value, uint16_t color)
 {
@@ -422,7 +484,7 @@ static void draw_page(void)
         cache->shown_page = page;
         paint_fill(0, 0, 240, 240, BACK);
         paint_fill(0, 29, 240, 1, PANEL);
-        cache->title_cache = cache->hint_cache = ~0U;
+        cache->title_cache = cache->hint_cache = cache->eye_cache = ~0U;
         memset(cache->foot_cache, 0xff, sizeof cache->foot_cache);
         memset(cache->row_cache, 0xff, sizeof cache->row_cache);
         memset(cache->tile_cache, 0xff, sizeof cache->tile_cache);
@@ -430,6 +492,7 @@ static void draw_page(void)
     if (!paint_rendering) leds();
     if (page == BLE) draw_ble(&frame_ble);
     else verbalizer_draw();
+    eye_draw(); /* last, so it is on top of the page's header */
 }
 static void draw(const struct fm1_ble_status *ble)
 {
@@ -442,6 +505,7 @@ static void draw(const struct fm1_ble_status *ble)
         scheme = schemes[wanted];
         saved_cache.shown_page = ~0U;
     }
+    eye_update(frame_time);
     frame_ble = *ble;
     if (page == BLE) {
         fm1_bluetooth_get_status(&frame_radio);
@@ -649,6 +713,11 @@ void groove_screen_control(void)
             vb_page = mode ? mode * 3 - 2 : 0;
         }
     }
+    for (unsigned i = 0; i < 7; ++i)
+        if (controls.encoders[i]) eye_glance_encoder(i, now);
+    uint32_t keys_down = controls.keys & ~previous_keys;
+    for (unsigned key = 0; key < 27; ++key)
+        if (keys_down & (1U << key)) { eye_glance_key(key, now); break; }
     unsigned old_page = page;
     if (pressed & BUTTON(GLO)) page = page == BLE ? VERBALIZER : BLE;
     if (pressed & BUTTON(HOME)) page = VERBALIZER;
